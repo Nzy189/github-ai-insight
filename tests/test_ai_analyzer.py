@@ -1,0 +1,183 @@
+from __future__ import annotations
+
+import json
+
+import pytest
+
+from ai_analyzer import (
+    AIAnalyzer,
+    FatalLLMError,
+    LLMError,
+    build_degraded_analysis,
+    extract_json,
+    heuristic_popularity,
+    normalize_analysis,
+    pick_winner,
+)
+from models import Analysis, AnalyzedProject, Repo, Scores
+
+GOOD = {
+    "one_liner": "一句话",
+    "highlights": ["A", "B"],
+    "target_audience": "开发者",
+    "difficulty": "low",
+    "rating": 5,
+    "rating_reason": "好用",
+    "detailed_intro": "详细介绍",
+    "scores": {"utility": 90, "problem_solving": 80, "popularity": 70, "nas_usability": 60},
+}
+
+
+class TestExtractJson:
+    def test_plain(self):
+        assert extract_json('{"a": 1}') == {"a": 1}
+
+    def test_fenced(self):
+        assert extract_json('```json\n{"a": 1}\n```') == {"a": 1}
+
+    def test_fenced_without_lang(self):
+        assert extract_json('```\n{"a": 1}\n```') == {"a": 1}
+
+    def test_surrounded_by_prose(self):
+        assert extract_json('好的，结果如下：\n{"a": 1}\n希望有帮助') == {"a": 1}
+
+    def test_nested_object(self):
+        text = json.dumps({"scores": {"utility": 1}}, ensure_ascii=False)
+        assert extract_json(f"前言 {text} 后记")["scores"]["utility"] == 1
+
+    @pytest.mark.parametrize("bad", ["", "   ", "完全不是 JSON", "[1,2,3]"])
+    def test_invalid_raises(self, bad):
+        with pytest.raises(ValueError):
+            extract_json(bad)
+
+
+class TestNormalize:
+    def test_happy_path(self, repo):
+        a = normalize_analysis(GOOD, repo)
+        assert a.one_liner == "一句话"
+        assert a.difficulty == "low"
+        assert a.rating == 5
+        assert a.scores.total == pytest.approx(79.0)
+        assert a.degraded is False
+
+    @pytest.mark.parametrize("raw,expected", [(9, 5), (0, 1), (-3, 1), ("4", 4), (None, 3), ("x", 3)])
+    def test_rating_clamped(self, repo, raw, expected):
+        assert normalize_analysis({**GOOD, "rating": raw}, repo).rating == expected
+
+    @pytest.mark.parametrize("raw,expected", [(150, 100), (-20, 0), (55.6, 56), ("77", 77)])
+    def test_scores_clamped(self, repo, raw, expected):
+        a = normalize_analysis({**GOOD, "scores": {**GOOD["scores"], "utility": raw}}, repo)
+        assert a.scores.utility == expected
+
+    @pytest.mark.parametrize("raw", ["MEDIUM-HIGH", "简单", "", None, 3])
+    def test_bad_difficulty_falls_back(self, repo, raw):
+        assert normalize_analysis({**GOOD, "difficulty": raw}, repo).difficulty == "medium"
+
+    def test_difficulty_case_insensitive(self, repo):
+        assert normalize_analysis({**GOOD, "difficulty": "HIGH"}, repo).difficulty == "high"
+
+    def test_highlights_from_string(self, repo):
+        a = normalize_analysis({**GOOD, "highlights": "- A\n- B\n- C"}, repo)
+        assert a.highlights == ["A", "B", "C"]
+
+    def test_highlights_capped(self, repo):
+        a = normalize_analysis({**GOOD, "highlights": [f"h{i}" for i in range(20)]}, repo)
+        assert len(a.highlights) == 6
+
+    def test_missing_scores_defaults(self, repo):
+        a = normalize_analysis({k: v for k, v in GOOD.items() if k != "scores"}, repo)
+        assert a.scores.utility == 50
+        assert a.scores.popularity == heuristic_popularity(repo.stars)
+
+    def test_empty_one_liner_falls_back_to_description(self, repo):
+        a = normalize_analysis({**GOOD, "one_liner": ""}, repo)
+        assert a.one_liner == repo.description
+
+    def test_raw_json_preserved(self, repo):
+        a = normalize_analysis(GOOD, repo)
+        assert json.loads(a.raw_json)["one_liner"] == "一句话"
+
+
+class TestDegraded:
+    def test_uses_github_description(self, repo):
+        a = build_degraded_analysis(repo, "API Key 无效")
+        assert a.degraded is True
+        assert a.one_liner == repo.description
+        assert "API Key 无效" in a.degrade_reason
+        assert a.scores.utility == 50
+        assert a.scores.problem_solving == 50
+        assert a.scores.nas_usability == 50
+
+    def test_handles_empty_description(self):
+        repo = Repo(full_name="a/b", html_url="u", description="")
+        a = build_degraded_analysis(repo, "reason")
+        assert a.one_liner
+
+    @pytest.mark.parametrize("stars,low,high", [(0, 40, 50), (500, 60, 70), (50000, 90, 100)])
+    def test_popularity_heuristic_monotonic(self, stars, low, high):
+        assert low <= heuristic_popularity(stars) <= high
+
+
+class _StubLLM:
+    def __init__(self, reply=None, error=None):
+        self.reply, self.error = reply, error
+
+    def complete(self, system, user):
+        if self.error:
+            raise self.error
+        return self.reply
+
+
+class TestAnalyzer:
+    def test_no_client_degrades(self, repo):
+        a = AIAnalyzer(None).analyze(repo)
+        assert a.degraded is True
+
+    def test_good_reply(self, repo):
+        a = AIAnalyzer(_StubLLM(json.dumps(GOOD))).analyze(repo)
+        assert a.degraded is False
+        assert a.rating == 5
+
+    def test_unparsable_reply_degrades(self, repo):
+        a = AIAnalyzer(_StubLLM("这不是 JSON")).analyze(repo)
+        assert a.degraded is True
+        assert "非 JSON" in a.degrade_reason
+
+    def test_fatal_error_degrades(self, repo):
+        a = AIAnalyzer(_StubLLM(error=FatalLLMError("Key 无效"))).analyze(repo)
+        assert a.degraded is True
+
+    def test_retryable_error_degrades(self, repo):
+        a = AIAnalyzer(_StubLLM(error=LLMError("超时"))).analyze(repo)
+        assert a.degraded is True
+
+    def test_prompt_contains_repo_facts(self, repo):
+        prompt = AIAnalyzer(None).build_prompt(repo)
+        assert repo.full_name in prompt
+        assert str(repo.stars) in prompt
+
+    def test_analyze_all_returns_projects(self, repo):
+        results = AIAnalyzer(_StubLLM(json.dumps(GOOD))).analyze_all([repo, repo])
+        assert len(results) == 2
+        assert all(isinstance(p, AnalyzedProject) for p in results)
+
+
+class TestPickWinner:
+    def _p(self, name, total_scores, stars=0):
+        return AnalyzedProject(
+            repo=Repo(full_name=name, html_url="u", stars=stars),
+            analysis=Analysis(scores=Scores(*total_scores)),
+        )
+
+    def test_empty(self):
+        assert pick_winner([]) is None
+
+    def test_highest_total_wins(self):
+        low = self._p("a/low", (10, 10, 10, 10))
+        high = self._p("a/high", (90, 90, 90, 90))
+        assert pick_winner([low, high]).repo.full_name == "a/high"
+
+    def test_tie_broken_by_stars(self):
+        a = self._p("a/few", (80, 80, 80, 80), stars=10)
+        b = self._p("a/many", (80, 80, 80, 80), stars=9999)
+        assert pick_winner([a, b]).repo.full_name == "a/many"

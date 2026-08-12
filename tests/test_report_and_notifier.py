@@ -1,0 +1,220 @@
+from __future__ import annotations
+
+from datetime import date
+
+import pytest
+
+from models import Analysis, Scores
+from report_generator import ReportGenerator, render_markdown, score_tier
+from wechat_notifier import WeChatNotifier, build_empty_markdown, build_markdown
+
+REPORT_DATE = date(2026, 8, 12)
+
+
+@pytest.fixture
+def generator(tmp_path) -> ReportGenerator:
+    return ReportGenerator(
+        tmp_path / "reports",
+        tmp_path / "archive",
+        report_base_url="http://nas.local:8080/reports",
+        model_name="gpt-4o",
+    )
+
+
+class TestScoreTier:
+    @pytest.mark.parametrize("score,tier", [
+        (100, "high"), (80, "high"), (79.9, "mid"), (50, "mid"), (49.9, "low"), (0, "low"),
+    ])
+    def test_boundaries(self, score, tier):
+        assert score_tier(score) == tier
+
+
+class TestRenderMarkdown:
+    def test_basic_markdown(self):
+        html = render_markdown("**粗体** 和 `代码`")
+        assert "<strong>粗体</strong>" in html
+        assert "<code>代码</code>" in html
+
+    def test_escapes_raw_html(self):
+        html = render_markdown('<script>alert(1)</script>')
+        assert "<script>" not in html
+        assert "&lt;script&gt;" in html
+
+    def test_empty(self):
+        assert render_markdown("") == ""
+        assert render_markdown("   ") == ""
+
+    def test_lists_render(self):
+        assert "<li>" in render_markdown("- 一\n- 二")
+
+
+class TestHtmlReport:
+    def test_file_naming(self, generator, project):
+        path, url = generator.write_report(project, REPORT_DATE)
+        assert path.name == "2026-08-12-acme_cool-agent.html"
+        assert url == "http://nas.local:8080/reports/2026-08-12-acme_cool-agent.html"
+        assert project.report_path == str(path)
+        assert project.report_url == url
+
+    def test_is_self_contained(self, generator, project):
+        html = generator.render_html(project, REPORT_DATE)
+        assert "<style>" in html
+        assert "https://fonts.googleapis" not in html
+        assert "cdn." not in html
+        assert "<script" not in html
+
+    def test_contains_key_content(self, generator, project):
+        html = generator.render_html(project, REPORT_DATE)
+        assert project.repo.repo_name in html
+        assert project.repo.html_url in html
+        assert project.analysis.one_liner in html
+        for h in project.analysis.highlights:
+            assert h in html
+        assert "2026-08-12" in html
+
+    def test_score_bars_and_ring(self, generator, project):
+        html = generator.render_html(project, REPORT_DATE)
+        # 90 → high, 60 → mid
+        assert "score-high" in html
+        assert "score-mid" in html
+        assert "width: 90%" in html
+        assert str(int(round(project.total_score))) in html
+
+    def test_responsive_and_print_styles(self, generator, project):
+        html = generator.render_html(project, REPORT_DATE)
+        assert "@media (max-width: 640px)" in html
+        assert "@media print" in html
+        assert "prefers-reduced-motion" in html
+
+    def test_degraded_banner_only_when_degraded(self, generator, project):
+        assert "本报告为降级数据" not in generator.render_html(project, REPORT_DATE)
+        project.analysis.degraded = True
+        project.analysis.degrade_reason = "LLM 超时"
+        html = generator.render_html(project, REPORT_DATE)
+        assert "本报告为降级数据" in html
+        assert "LLM 超时" in html
+
+    def test_autoescape_blocks_injection(self, generator, project):
+        project.analysis.one_liner = '<img src=x onerror="alert(1)">'
+        html = generator.render_html(project, REPORT_DATE)
+        assert 'onerror="alert(1)"' not in html
+        assert "&lt;img" in html
+
+    def test_written_file_is_valid_utf8(self, generator, project):
+        path, _ = generator.write_report(project, REPORT_DATE)
+        content = path.read_text(encoding="utf-8")
+        assert content.startswith("<!DOCTYPE html>")
+        assert "把多智能体编排搬回自己的机器" in content
+
+
+class TestArchive:
+    def test_path_layout(self, generator, project):
+        path = generator.write_archive(project, REPORT_DATE)
+        assert path.parent.name == "2026-08"
+        assert path.name == "2026-08-12-acme_cool-agent.md"
+
+    def test_content(self, generator, project):
+        md = generator.build_markdown(project, REPORT_DATE)
+        assert f"# {project.repo.full_name}" in md
+        assert project.analysis.one_liner in md
+        assert "| 实用性 | 35% | 90 |" in md
+        assert "★★★★☆" in md
+
+    def test_degraded_note(self, generator, project):
+        project.analysis.degraded = True
+        project.analysis.degrade_reason = "配额不足"
+        assert "配额不足" in generator.build_markdown(project, REPORT_DATE)
+
+
+class TestWeChatMarkdown:
+    def test_structure(self, project):
+        project.report_url = "http://nas.local:8080/reports/x.html"
+        msg = build_markdown(project, REPORT_DATE)
+        assert "GitHub AI 日报" in msg
+        assert "2026-08-12" in msg
+        assert f"[{project.repo.full_name}]({project.repo.html_url})" in msg
+        assert "推荐指数**: 4/5" in msg
+        assert project.analysis.one_liner in msg
+        assert "查看完整分析报告" in msg
+        assert project.report_url in msg
+
+    def test_only_three_highlights(self, project):
+        project.analysis.highlights = [f"亮点{i}" for i in range(10)]
+        msg = build_markdown(project, REPORT_DATE)
+        assert "亮点0" in msg and "亮点2" in msg
+        assert "亮点3" not in msg
+
+    def test_degraded_warning(self, project):
+        project.analysis.degraded = True
+        project.analysis.degrade_reason = "LLM 超时"
+        assert "AI 分析降级" in build_markdown(project, REPORT_DATE)
+
+    def test_no_report_link_when_missing(self, project):
+        project.report_url = ""
+        assert "查看完整分析报告" not in build_markdown(project, REPORT_DATE)
+
+    def test_byte_limit(self, project):
+        project.analysis.one_liner = "长" * 5000
+        msg = build_markdown(project, REPORT_DATE)
+        assert len(msg.encode("utf-8")) <= 4096
+
+    def test_empty_message(self):
+        assert "今日无新 AI 项目发现" in build_empty_markdown(REPORT_DATE)
+
+
+class _StubResponse:
+    def __init__(self, ok=True, status_code=200, payload=None, text=""):
+        self.ok, self.status_code = ok, status_code
+        self._payload = payload if payload is not None else {"errcode": 0, "errmsg": "ok"}
+        self.text = text or str(self._payload)
+
+    def json(self):
+        return self._payload
+
+
+class _StubSession:
+    def __init__(self, responses):
+        self.responses = list(responses)
+        self.calls = []
+
+    def post(self, url, json, timeout):  # noqa: A002
+        self.calls.append(json)
+        result = self.responses.pop(0)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+
+class TestNotifier:
+    def test_skips_when_not_configured(self):
+        result = WeChatNotifier("").send_markdown("hi")
+        assert result.skipped is True
+        assert result.ok is False
+
+    def test_success(self):
+        session = _StubSession([_StubResponse()])
+        result = WeChatNotifier("http://hook", session=session, retry_delays=()).send_markdown("hi")
+        assert result.ok is True
+        assert session.calls[0]["msgtype"] == "markdown"
+        assert session.calls[0]["markdown"]["content"] == "hi"
+
+    def test_retries_then_succeeds(self):
+        session = _StubSession([
+            _StubResponse(ok=False, status_code=500),
+            _StubResponse(),
+        ])
+        notifier = WeChatNotifier("http://hook", session=session, retry_delays=(0,))
+        assert notifier.send_markdown("hi").ok is True
+        assert len(session.calls) == 2
+
+    def test_nonzero_errcode_is_failure(self):
+        session = _StubSession([_StubResponse(payload={"errcode": 93000, "errmsg": "invalid"})])
+        result = WeChatNotifier("http://hook", session=session, retry_delays=()).send_markdown("hi")
+        assert result.ok is False
+        assert "93000" in result.message
+
+    def test_exhausts_retries(self):
+        session = _StubSession([_StubResponse(ok=False, status_code=500)] * 3)
+        notifier = WeChatNotifier("http://hook", session=session, retry_delays=(0, 0))
+        assert notifier.send_markdown("hi").ok is False
+        assert len(session.calls) == 3

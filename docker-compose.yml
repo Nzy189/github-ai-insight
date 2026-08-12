@@ -1,0 +1,32 @@
+services:
+  github-ai-insight:
+    build: .
+    image: github-ai-insight:latest
+    container_name: github-ai-insight
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # NAS 权限适配：改成 NAS 上执行 `id` 得到的实际值
+      PUID: "1000"
+      PGID: "1000"
+      TZ: "${TIMEZONE:-Asia/Dubai}"
+      DATA_DIR: "/app/data"
+    volumes:
+      - ./data:/app/data
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import sqlite3; sqlite3.connect('/app/data/github_ai_insight.db').close()"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

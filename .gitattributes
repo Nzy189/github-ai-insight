@@ -1,0 +1,4 @@
+# 容器内执行的脚本必须是 LF，否则 Linux 下 `#!/bin/sh\r` 会报 "no such file or directory"
+*.sh text eol=lf
+Dockerfile text eol=lf
+docker-entrypoint.sh text eol=lf

@@ -1,0 +1,10 @@
+pydantic>=2.8,<3
+pydantic-settings>=2.5,<3
+requests>=2.32,<3
+Jinja2>=3.1,<4
+APScheduler>=3.10,<4
+Markdown>=3.6,<4
+tzdata>=2024.1
+# 供 USE_SYSTEM_CERTS=true 使用：改用操作系统证书存储，
+# 解决开发机上代理/杀软 MITM 导致的 CERTIFICATE_VERIFY_FAILED
+truststore>=0.9

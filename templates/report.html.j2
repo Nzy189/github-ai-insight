@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>{{ repo.repo_name }} — GitHub AI Insight {{ report_date }}</title>
+<style>
+/* ============================================================
+   GitHub AI Insight — 自包含报告样式
+   设计规范: DESIGN.md v1.0 · 暗色开发者仪表盘
+   无外部字体 / 无 CDN / 离线可用
+   ============================================================ */
+:root {
+  --color-bg: #0A0A0B;
+  --color-surface: #111113;
+  --color-surface-elevated: #18181B;
+  --color-text-primary: #FAFAFA;
+  --color-text-secondary: #A1A1AA;
+  --color-text-tertiary: #52525B;
+  --color-text-body: #D4D4D8;
+  --color-accent: #3B82F6;
+  --color-accent-hover: #60A5FA;
+  --color-accent-subtle: rgba(59, 130, 246, 0.12);
+  --color-border: #27272A;
+  --color-border-subtle: #1E1E21;
+  --color-success: #22C55E;
+  --color-warning: #F59E0B;
+  --color-error: #EF4444;
+
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+               'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei',
+               'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', 'Cascadia Code',
+               Consolas, 'Courier New', monospace;
+
+  --container-max: 800px;
+  --shadow-md: 0 1px 2px rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.15);
+  --shadow-lg: 0 2px 4px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.25);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--color-bg);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+.wrap {
+  max-width: var(--container-max);
+  margin: 0 auto;
+  padding: 0 24px 64px;
+}
+
+/* ---------------------------------------------------------- Header */
+.site-header {
+  border-bottom: 1px solid var(--color-border-subtle);
+  padding: 20px 0;
+  margin-bottom: 48px;
+}
+.site-header-inner {
+  max-width: var(--container-max);
+  margin: 0 auto;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--color-text-secondary);
+}
+.brand-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #3B82F6, #22C55E);
+}
+.report-date {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+}
+
+/* ---------------------------------------------------------- 降级横幅 */
+.degraded-banner {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  border: 1px dashed var(--color-warning);
+  background: rgba(245, 158, 11, 0.08);
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-bottom: 32px;
+}
+.degraded-banner .icon { font-size: 16px; line-height: 1.5; }
+.degraded-banner .text { font-size: 14px; color: #FBBF24; }
+.degraded-banner .text strong { display: block; margin-bottom: 4px; }
+
+/* ---------------------------------------------------------- Hero */
+.hero { text-align: center; margin-bottom: 48px; }
+.hero h1 {
+  font-family: var(--font-mono);
+  font-size: 36px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  margin: 0 0 12px;
+  color: var(--color-text-primary);
+  word-break: break-word;
+}
+.hero-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 8px 16px;
+  font-size: 12px;
+  letter-spacing: 0.01em;
+  color: var(--color-text-secondary);
+  margin-bottom: 32px;
+}
+.hero-meta a { color: var(--color-accent); text-decoration: none; }
+.hero-meta a:hover { color: var(--color-accent-hover); text-decoration: underline; }
+.hero-meta .sep { color: var(--color-text-tertiary); }
+.hero-meta .mono { font-family: var(--font-mono); }
+
+.one-liner {
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.45;
+  letter-spacing: -0.01em;
+  color: var(--color-text-primary);
+  margin: 0 auto 32px;
+  max-width: 620px;
+}
+
+/* ---------------------------------------------------------- 评分环 */
+.score-ring-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.score-ring { position: relative; width: 80px; height: 80px; }
+.score-ring svg { transform: rotate(-90deg); display: block; }
+.score-ring .track { fill: none; stroke: var(--color-border); stroke-width: 6; }
+.score-ring .progress {
+  fill: none;
+  stroke-width: 6;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+.score-ring .value {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+.score-ring-label {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+}
+
+/* ---------------------------------------------------------- 区块 */
+section { margin-bottom: 48px; }
+.section-title {
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  margin: 0 0 20px;
+  color: var(--color-text-primary);
+}
+
+/* ---------------------------------------------------------- 卡片 */
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: var(--shadow-md);
+}
+
+.score-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+.score-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: var(--shadow-md);
+}
+.score-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.score-card-label { font-size: 14px; color: var(--color-text-secondary); }
+.score-card-weight {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+}
+.score-card-value {
+  font-family: var(--font-mono);
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--color-text-primary);
+  margin-bottom: 12px;
+}
+.score-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--color-border);
+  overflow: hidden;
+}
+.score-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+.score-high { background: linear-gradient(90deg, #22C55E, #4ADE80); }
+.score-mid  { background: linear-gradient(90deg, #F59E0B, #FBBF24); }
+.score-low  { background: linear-gradient(90deg, #EF4444, #F87171); }
+
+/* ---------------------------------------------------------- Badge */
+.badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 20px;
+}
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+.badge-difficulty-low  { background: rgba(34,197,94,0.15);  color: #4ADE80; }
+.badge-difficulty-mid  { background: rgba(245,158,11,0.15); color: #FBBF24; }
+.badge-difficulty-high { background: rgba(239,68,68,0.15);  color: #F87171; }
+.badge-rating { background: var(--color-accent-subtle); color: var(--color-accent-hover); }
+.badge-topic {
+  background: var(--color-surface-elevated);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+  font-family: var(--font-mono);
+}
+
+/* ---------------------------------------------------------- 亮点列表 */
+.highlight-list { list-style: none; margin: 0; padding: 0; }
+.highlight-list li {
+  position: relative;
+  padding: 12px 0 12px 28px;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--color-text-body);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+.highlight-list li:last-child { border-bottom: none; }
+.highlight-list li::before {
+  content: "";
+  position: absolute;
+  left: 6px;
+  top: 21px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-accent);
+}
+
+/* ---------------------------------------------------------- 正文 prose */
+.prose { color: var(--color-text-body); font-size: 16px; line-height: 1.7; }
+.prose > *:first-child { margin-top: 0; }
+.prose > *:last-child { margin-bottom: 0; }
+.prose h1, .prose h2 {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 28px 0 12px;
+  color: var(--color-text-primary);
+}
+.prose h3 {
+  font-size: 17px;
+  font-weight: 600;
+  margin: 24px 0 10px;
+  color: var(--color-text-primary);
+}
+.prose p { margin: 0 0 16px; }
+.prose strong { color: var(--color-text-primary); font-weight: 600; }
+.prose ul, .prose ol { padding-left: 24px; margin: 0 0 16px; }
+.prose li { margin-bottom: 6px; }
+.prose a { color: var(--color-accent); text-decoration: none; }
+.prose a:hover { color: var(--color-accent-hover); text-decoration: underline; }
+.prose code {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  background: var(--color-surface-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 2px 6px;
+  color: #A78BFA;
+}
+.prose pre {
+  background: var(--color-surface-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 16px;
+  overflow-x: auto;
+  margin: 0 0 16px;
+}
+.prose pre code { background: none; border: none; padding: 0; font-size: 13px; }
+.prose blockquote {
+  margin: 0 0 16px;
+  padding: 8px 16px;
+  border-left: 3px solid var(--color-border);
+  color: var(--color-text-secondary);
+}
+
+/* ---------------------------------------------------------- 快速上手 */
+.verdict-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.verdict-item {
+  background: var(--color-surface-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 16px;
+}
+.verdict-item .k {
+  font-size: 12px;
+  letter-spacing: 0.01em;
+  color: var(--color-text-secondary);
+  margin-bottom: 6px;
+}
+.verdict-item .v {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+.stars { letter-spacing: 2px; color: var(--color-warning); }
+.stars .off { color: var(--color-text-tertiary); }
+.verdict-reason { font-size: 15px; line-height: 1.6; color: var(--color-text-body); margin: 0; }
+
+/* ---------------------------------------------------------- 元数据表 */
+.meta-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.meta-table tr { border-bottom: 1px solid var(--color-border-subtle); }
+.meta-table tr:last-child { border-bottom: none; }
+.meta-table th {
+  text-align: left;
+  font-weight: 400;
+  color: var(--color-text-secondary);
+  padding: 10px 0;
+  white-space: nowrap;
+  width: 32%;
+}
+.meta-table td {
+  text-align: right;
+  font-family: var(--font-mono);
+  color: var(--color-text-primary);
+  padding: 10px 0;
+  word-break: break-word;
+}
+
+/* ---------------------------------------------------------- CTA + Footer */
+.cta-row { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 48px; }
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  background: var(--color-accent);
+  color: #FFFFFF;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: background 0.15s ease;
+}
+.btn-primary:hover { background: #2563EB; }
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: all 0.15s ease;
+}
+.btn-ghost:hover {
+  background: var(--color-surface-elevated);
+  color: var(--color-text-primary);
+  border-color: #3F3F46;
+}
+
+footer {
+  border-top: 1px solid var(--color-border-subtle);
+  padding-top: 24px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--color-text-tertiary);
+  text-align: center;
+}
+footer a { color: var(--color-text-secondary); text-decoration: none; }
+footer a:hover { color: var(--color-accent-hover); }
+
+/* ---------------------------------------------------------- 响应式 */
+@media (max-width: 640px) {
+  body { font-size: 14px; }
+  .wrap { padding: 0 16px 48px; }
+  .site-header-inner { padding: 0 16px; }
+  .site-header { margin-bottom: 32px; }
+  .hero h1 { font-size: 28px; }
+  .one-liner { font-size: 18px; }
+  .section-title { font-size: 18px; }
+  .score-grid { grid-template-columns: 1fr; }
+  .verdict-grid { grid-template-columns: 1fr; }
+  .score-ring { width: 64px; height: 64px; }
+  .score-ring .value { font-size: 20px; }
+  .prose { font-size: 15px; }
+  .cta-row .btn-primary, .cta-row .btn-ghost { flex: 1 1 100%; }
+  .meta-table th { width: 40%; }
+}
+
+/* ---------------------------------------------------------- 无障碍 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ---------------------------------------------------------- 打印 */
+@media print {
+  :root {
+    --color-bg: #FFFFFF;
+    --color-surface: #FFFFFF;
+    --color-surface-elevated: #F4F4F5;
+    --color-text-primary: #18181B;
+    --color-text-secondary: #52525B;
+    --color-text-tertiary: #A1A1AA;
+    --color-text-body: #27272A;
+    --color-border: #D4D4D8;
+    --color-border-subtle: #E4E4E7;
+  }
+  body { background: #FFFFFF; color: #18181B; }
+  .card, .score-card, .verdict-item { box-shadow: none; }
+  .cta-row { display: none; }
+  section { break-inside: avoid; margin-bottom: 24px; }
+  a { color: #1D4ED8 !important; }
+}
+</style>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="site-header-inner">
+    <div class="brand"><span class="brand-dot"></span>GitHub AI Insight</div>
+    <div class="report-date">{{ report_date }}</div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  {% if analysis.degraded %}
+  <div class="degraded-banner" role="status">
+    <span class="icon">⚠️</span>
+    <span class="text">
+      <strong>本报告为降级数据</strong>
+      AI 深度分析未能完成（{{ analysis.degrade_reason }}），以下内容基于 GitHub 元数据生成，评分仅供参考。
+    </span>
+  </div>
+  {% endif %}
+
+  <!-- ============ Hero ============ -->
+  <div class="hero">
+    <h1>{{ repo.repo_name }}</h1>
+    <div class="hero-meta">
+      <span class="mono">{{ repo.full_name }}</span>
+      <span class="sep">·</span>
+      <span class="mono">★ {{ '{:,}'.format(repo.stars) }}</span>
+      {% if repo.language %}
+      <span class="sep">·</span>
+      <span class="mono">{{ repo.language }}</span>
+      {% endif %}
+      <span class="sep">·</span>
+      <a href="{{ repo.html_url }}" target="_blank" rel="noopener noreferrer">在 GitHub 查看 ↗</a>
+    </div>
+
+    <p class="one-liner">{{ analysis.one_liner }}</p>
+
+    <div class="score-ring-wrap">
+      <div class="score-ring">
+        <svg width="80" height="80" viewBox="0 0 80 80" role="img"
+             aria-label="综合评分 {{ total_score }} 分，满分 100 分">
+          <defs>
+            <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="{{ ring_start }}"/>
+              <stop offset="100%" stop-color="{{ ring_end }}"/>
+            </linearGradient>
+          </defs>
+          <circle class="track" cx="40" cy="40" r="34"/>
+          <circle class="progress" cx="40" cy="40" r="34"
+                  stroke="url(#ringGrad)"
+                  stroke-dasharray="{{ ring_circumference }}"
+                  stroke-dashoffset="{{ ring_offset }}"/>
+        </svg>
+        <div class="value">{{ total_score_int }}</div>
+      </div>
+      <div class="score-ring-label">综合评分 / 100</div>
+    </div>
+  </div>
+
+  <!-- ============ 四维评分 ============ -->
+  <section aria-labelledby="sec-scores">
+    <h2 class="section-title" id="sec-scores">评分详情</h2>
+    <div class="score-grid">
+      {% for dim in dimensions %}
+      <div class="score-card">
+        <div class="score-card-head">
+          <span class="score-card-label">{{ dim.label }}</span>
+          <span class="score-card-weight">{{ dim.weight }}</span>
+        </div>
+        <div class="score-card-value">{{ dim.score }}</div>
+        <div class="score-bar" role="img" aria-label="{{ dim.label }} {{ dim.score }} 分">
+          <div class="score-bar-fill {{ dim.css_class }}" style="width: {{ dim.score }}%"></div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <!-- ============ 快速判断 ============ -->
+  <section aria-labelledby="sec-verdict">
+    <h2 class="section-title" id="sec-verdict">快速上手</h2>
+    <div class="card">
+      <div class="verdict-grid">
+        <div class="verdict-item">
+          <div class="k">推荐指数</div>
+          <div class="v stars">
+            {%- for _ in range(analysis.rating) %}★{% endfor -%}
+            {%- for _ in range(5 - analysis.rating) %}<span class="off">★</span>{% endfor -%}
+            &nbsp;<span style="font-family: var(--font-mono); font-size: 14px; color: var(--color-text-secondary);">{{ analysis.rating }}/5</span>
+          </div>
+        </div>
+        <div class="verdict-item">
+          <div class="k">上手难度</div>
+          <div class="v">
+            <span class="badge {{ difficulty_class }}" style="font-size: 13px; padding: 4px 12px;">
+              {{ difficulty_label }}
+            </span>
+          </div>
+        </div>
+      </div>
+      {% if analysis.rating_reason %}
+      <p class="verdict-reason">{{ analysis.rating_reason }}</p>
+      {% endif %}
+      {% if analysis.target_audience %}
+      <p class="verdict-reason" style="margin-top: 12px;">
+        <strong style="color: var(--color-text-primary);">适合谁：</strong>{{ analysis.target_audience }}
+      </p>
+      {% endif %}
+    </div>
+  </section>
+
+  <!-- ============ 详细介绍 ============ -->
+  {% if intro_html %}
+  <section aria-labelledby="sec-intro">
+    <h2 class="section-title" id="sec-intro">详细介绍</h2>
+    <div class="card">
+      <div class="prose">{{ intro_html|safe }}</div>
+    </div>
+  </section>
+  {% endif %}
+
+  <!-- ============ 技术亮点 ============ -->
+  {% if analysis.highlights %}
+  <section aria-labelledby="sec-highlights">
+    <h2 class="section-title" id="sec-highlights">技术亮点</h2>
+    <div class="card">
+      <ul class="highlight-list">
+        {% for item in analysis.highlights %}
+        <li>{{ item }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </section>
+  {% endif %}
+
+  <!-- ============ 仓库信息 ============ -->
+  <section aria-labelledby="sec-meta">
+    <h2 class="section-title" id="sec-meta">仓库信息</h2>
+    <div class="card">
+      {% if repo.topics %}
+      <div class="badge-row">
+        {% for topic in repo.topics[:8] %}
+        <span class="badge badge-topic">{{ topic }}</span>
+        {% endfor %}
+      </div>
+      {% endif %}
+      <table class="meta-table">
+        <tbody>
+          <tr><th>仓库</th><td>{{ repo.full_name }}</td></tr>
+          <tr><th>Star</th><td>{{ '{:,}'.format(repo.stars) }}</td></tr>
+          <tr><th>Fork</th><td>{{ '{:,}'.format(repo.forks) }}</td></tr>
+          <tr><th>Open Issues</th><td>{{ '{:,}'.format(repo.open_issues) }}</td></tr>
+          <tr><th>主语言</th><td>{{ repo.language or '—' }}</td></tr>
+          <tr><th>创建时间</th><td>{{ created_display }}</td></tr>
+          {% if repo.description %}
+          <tr><th>官方描述</th><td style="font-family: var(--font-sans); text-align: left;">{{ repo.description }}</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============ CTA ============ -->
+  <div class="cta-row">
+    <a class="btn-primary" href="{{ repo.html_url }}" target="_blank" rel="noopener noreferrer">前往 GitHub 仓库 ↗</a>
+    <a class="btn-ghost" href="{{ repo.html_url }}/stargazers" target="_blank" rel="noopener noreferrer">查看 Star 趋势</a>
+  </div>
+
+  <footer>
+    <p>由 <strong style="color: var(--color-text-secondary);">GitHub AI Insight</strong> 自动生成 · {{ generated_at }}</p>
+    <p>分析模型: <span style="font-family: var(--font-mono);">{{ model_name }}</span></p>
+  </footer>
+
+</div>
+</body>
+</html>
