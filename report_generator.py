@@ -50,16 +50,25 @@ def score_tier(score: float) -> str:
     return "low"
 
 
+# 不能用 "extra" 合集：它捆绑了 attr_list，其 `{: ... }` 语法能给生成的标签
+# 塞任意属性（如 onmouseover / onclick），而 html.escape 只处理 <>& —— 花括号
+# 原样通过，转义拦不住它。detailed_intro 来自第三方 README 派生的模型文本，
+# 一旦 attr_list 生效，被投毒的 README 就能在报告页上执行脚本。
+# 因此这里显式列出所需扩展，永远不要换回 "extra"。
+MARKDOWN_EXTENSIONS = ["fenced_code", "tables", "def_list", "abbr", "sane_lists", "nl2br"]
+
+
 def render_markdown(text: str) -> str:
     """把 LLM 生成的 Markdown 转成 HTML。
 
     先做 HTML 转义再渲染 Markdown：LLM 输出属于不可信内容，
     不允许它往自包含报告里注入原始 HTML/脚本。
+    扩展白名单排除了 attr_list（见 MARKDOWN_EXTENSIONS 注释）。
     """
     if not text or not text.strip():
         return ""
     escaped = html.escape(text, quote=False)
-    return md.markdown(escaped, extensions=["extra", "sane_lists", "nl2br"])
+    return md.markdown(escaped, extensions=MARKDOWN_EXTENSIONS)
 
 
 def _format_date(value: str) -> str:

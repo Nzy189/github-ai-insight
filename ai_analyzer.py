@@ -165,10 +165,9 @@ def build_degraded_analysis(repo: Repo, reason: str) -> Analysis:
         ),
         tldr=Tldr(
             pain=repo.description.strip() or "该仓库未填写描述",
-            solution=(
-                f"主语言 {repo.language or '未知'}"
-                + (f"，Topics: {', '.join(repo.topics[:3])}" if repo.topics else "")
-            ),
+            # solution 标签是"怎么解决"，塞仓库元数据答非所问；
+            # 同样的内容已在 highlights 与仓库信息表里，留空让模板隐藏该行。
+            solution="",
             fit="AI 分析不可用，部署要求请查看仓库 README",
         ),
         degraded=True,
@@ -221,12 +220,27 @@ def _as_str(value: Any, default: str = "") -> str:
     return str(value).strip()
 
 
+TLDR_MAX_CHARS = 80
+
+
+def _truncate(text: str, limit: int = TLDR_MAX_CHARS) -> str:
+    """超长首屏文案硬截断。
+
+    Prompt 要求 40 字，这里放宽到 80 —— 不是对文风的第二意见，
+    只是防止某一次话痨输出把整个首屏撑爆。
+    """
+    if len(text) <= limit:
+        return text
+    return text[:limit] + "…"
+
+
 def normalize_tldr(payload: dict[str, Any], repo: Repo) -> Tldr:
     """解析首屏三要素，逐字段兜底。
 
     模型漏一个字段不该毁掉整页，所以这里不整体降级。
     solution 只在 pain 没有消耗掉 description 时才回退到它 ——
     否则首屏会把同一句话印两遍。
+    三个字段最终都会被截断到 TLDR_MAX_CHARS。
     """
     raw = payload.get("tldr")
     if not isinstance(raw, dict):
@@ -245,7 +259,7 @@ def normalize_tldr(payload: dict[str, Any], repo: Repo) -> Tldr:
     if not fit and any(t.lower() == "docker" for t in repo.topics):
         fit = "仓库标注了 Docker 支持"
 
-    return Tldr(pain=pain, solution=solution, fit=fit)
+    return Tldr(pain=_truncate(pain), solution=_truncate(solution), fit=_truncate(fit))
 
 
 def normalize_analysis(payload: dict[str, Any], repo: Repo) -> Analysis:

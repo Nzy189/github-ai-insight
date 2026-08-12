@@ -36,7 +36,6 @@
 
   --container-max: 800px;
   --shadow-md: 0 1px 2px rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.15);
-  --shadow-lg: 0 2px 4px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.25);
 }
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -120,6 +119,7 @@ body {
   letter-spacing: -0.01em;
   margin: 0 0 10px;
   color: var(--color-text-primary);
+  word-break: break-word;
 }
 .hero-sub {
   display: flex;
@@ -159,6 +159,7 @@ body {
   font-size: 14px;
   line-height: 1.55;
   color: var(--color-text-primary);
+  word-break: break-word;
 }
 
 .verdict-bar {
@@ -199,8 +200,21 @@ body {
   margin-bottom: 5px;
   flex-wrap: wrap;
 }
-.verdict-stars { color: var(--color-warning); letter-spacing: 1px; font-size: 14px; }
+.verdict-stars {
+  color: var(--color-warning);
+  letter-spacing: 1px;
+  font-size: 14px;
+  white-space: nowrap;
+}
 .verdict-stars .off { color: var(--color-text-tertiary); }
+/* 星形只是装饰，评级必须同时以文本形式出现（WCAG 1.4.1）。 */
+.verdict-rating {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
 .hero-verdict-reason {
   margin: 0;
   font-size: 13px;
@@ -311,7 +325,6 @@ section { margin-bottom: 48px; }
 .badge-difficulty-low  { background: rgba(34,197,94,0.15);  color: #4ADE80; }
 .badge-difficulty-mid  { background: rgba(245,158,11,0.15); color: #FBBF24; }
 .badge-difficulty-high { background: rgba(239,68,68,0.15);  color: #F87171; }
-.badge-rating { background: var(--color-accent-subtle); color: var(--color-accent-hover); }
 .badge-topic {
   background: var(--color-surface-elevated);
   color: var(--color-text-secondary);
@@ -446,6 +459,8 @@ footer a:hover { color: var(--color-accent-hover); }
   .hero h1 { font-size: 21px; }
   .tldr-label { flex: 0 0 52px; }
   .tldr-text { font-size: 13px; }
+  /* 判断条在 375px 下很紧：先收星形，绝不换行、绝不低于 11px */
+  .verdict-stars { font-size: 13px; letter-spacing: 0.5px; }
   .section-title { font-size: 18px; }
   .score-line-label { flex: 0 0 92px; font-size: 12px; }
   .prose { font-size: 15px; }
@@ -548,11 +563,14 @@ footer a:hover { color: var(--color-accent-hover); }
       </div>
       <div class="verdict-text">
         <div class="verdict-head">
-          <span class="verdict-stars">
+          <span class="verdict-stars" role="img"
+                aria-label="推荐指数 {{ analysis.rating }}/5">
             {%- for _ in range(analysis.rating) %}★{% endfor -%}
             {%- for _ in range(5 - analysis.rating) %}<span class="off">★</span>{% endfor -%}
           </span>
-          <span class="badge {{ difficulty_class }}">{{ difficulty_label }}</span>
+          <span class="verdict-rating" aria-hidden="true">{{ analysis.rating }}/5</span>
+          <span class="badge {{ difficulty_class }}"
+                aria-label="上手难度 {{ difficulty_label }}">{{ difficulty_label }}</span>
         </div>
         {% if analysis.rating_reason %}
         <p class="hero-verdict-reason">{{ analysis.rating_reason }}</p>

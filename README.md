@@ -145,7 +145,8 @@ data/
 - 评分环 SVG 渐变（绿/黄/红三段）+ 四维进度条
 - `@media print` 切白底黑字便于存档
 - `prefers-reduced-motion` 关闭动画
-- LLM 输出经 HTML 转义后再渲染 Markdown，杜绝注入
+- LLM 输出先做 HTML 转义，再用白名单扩展渲染 Markdown（显式排除 `attr_list`，
+  否则 `{: onclick=... }` 语法能绕过转义给标签塞事件属性）
 
 访问：`http://{NAS_IP}:8080/reports`
 

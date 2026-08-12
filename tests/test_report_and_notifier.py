@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import date
 
 import pytest
@@ -9,6 +10,10 @@ from report_generator import ReportGenerator, render_markdown, score_tier
 from wechat_notifier import WeChatNotifier, build_empty_markdown, build_markdown
 
 REPORT_DATE = date(2026, 8, 12)
+
+# 任意标签上的 on* 事件属性。只匹配 `<` 与 `>` 之间的内容，
+# 所以正文里作为纯文本出现的 `onclick=` 不会误报。
+EVENT_HANDLER_ATTR = re.compile(r"<[a-zA-Z][^>]*\son[a-z]+\s*=")
 
 
 @pytest.fixture
@@ -46,6 +51,32 @@ class TestRenderMarkdown:
 
     def test_lists_render(self):
         assert "<li>" in render_markdown("- 一\n- 二")
+
+    def test_attr_list_cannot_decorate_inline_tag(self):
+        """python-markdown 的 extra 合集含 attr_list，`{: ... }` 能给标签塞任意属性，
+        而 html.escape 只处理 <>&，花括号原样通过 —— 转义拦不住它。
+        扩展白名单必须排除 attr_list。"""
+        html = render_markdown('这是**加粗**{: onmouseover="alert(1)" }')
+        assert "<strong>加粗</strong>" in html
+        assert not EVENT_HANDLER_ATTR.search(html), html
+        assert "<strong onmouseover" not in html
+
+    def test_attr_list_cannot_decorate_heading(self):
+        html = render_markdown('## 标题 {: id=x onclick="steal()" }')
+        assert "<h2>" in html
+        assert not EVENT_HANDLER_ATTR.search(html), html
+        assert 'id="x"' not in html
+
+    def test_ordinary_rendering_survives_extension_whitelist(self):
+        """去掉 extra 之后，日常语法不能跟着一起消失。"""
+        assert "<strong>粗" in render_markdown("**粗**")
+        assert "<h2>标题</h2>" in render_markdown("## 标题")
+        assert "<li>一</li>" in render_markdown("- 一\n- 二")
+        assert "<code>x</code>" in render_markdown("`x`")
+        fenced = render_markdown("```python\nprint(1)\n```")
+        assert "<pre>" in fenced and "print(1)" in fenced
+        table = render_markdown("| a | b |\n|---|---|\n| 1 | 2 |")
+        assert "<table>" in table and "<td>1</td>" in table
 
 
 class TestHtmlReport:
@@ -99,6 +130,17 @@ class TestHtmlReport:
         html = generator.render_html(project, REPORT_DATE)
         assert 'onerror="alert(1)"' not in html
         assert "&lt;img" in html
+
+    def test_attr_list_payload_in_intro_cannot_inject_handler(self, generator, project):
+        """detailed_intro 是第三方 README 派生的模型文本 —— 被投毒的 README
+        不得通过 attr_list 语法在报告页上挂事件处理器。"""
+        project.analysis.detailed_intro = (
+            '这是**加粗**{: onmouseover="alert(1)" }\n\n'
+            '## 标题 {: id=pwn onclick="steal()" }'
+        )
+        html = generator.render_html(project, REPORT_DATE)
+        assert not EVENT_HANDLER_ATTR.search(html), "报告页出现了事件处理器属性"
+        assert 'id="pwn"' not in html
 
     def test_written_file_is_valid_utf8(self, generator, project):
         path, _ = generator.write_report(project, REPORT_DATE)
@@ -226,6 +268,7 @@ class TestHeroB2:
 
     def test_one_liner_is_the_h1(self, generator, project):
         html = self._html(generator, project)
+        assert project.analysis.one_liner, "fixture 的 one_liner 不能为空，否则断言恒真"
         h1 = html.split("<h1")[1].split("</h1>")[0]
         assert project.analysis.one_liner in h1
         assert project.repo.repo_name not in h1
@@ -263,7 +306,25 @@ class TestHeroB2:
         html = self._html(generator, project)
         assert "verdict-bar" in html
         assert project.analysis.rating_reason in html
-        assert "入门友好" in html or "需要折腾" in html or "硬核" in html
+        # fixture 的 difficulty 是 medium —— 必须断言对应的那一个标签，
+        # "任意一个都行" 对每种难度都恒真，抓不到映射错误。
+        assert project.analysis.difficulty == "medium"
+        assert "需要折腾" in html
+        assert "入门友好" not in html
+        assert "硬核" not in html
+
+    def test_rating_is_readable_as_text_not_only_glyphs(self, generator, project):
+        """WCAG 1.4.1：五个相同的 ★ 字符对读屏用户等于没有信息。
+        星形必须带 aria-label，且页面上要有可见的 N/5 文本。"""
+        html = self._html(generator, project)
+        rating = project.analysis.rating
+        assert f'aria-label="推荐指数 {rating}/5"' in html
+        assert 'class="verdict-stars" role="img"' in html
+        assert f'class="verdict-rating" aria-hidden="true">{rating}/5<' in html
+
+    def test_difficulty_badge_has_accessible_name(self, generator, project):
+        html = self._html(generator, project)
+        assert 'aria-label="上手难度 需要折腾"' in html
 
     def test_hero_verdict_reason_has_its_own_singly_defined_class(self, generator, project):
         """回归测试：Hero 的 .verdict-reason 曾与快速上手区块同名选择器撞车，
@@ -286,10 +347,27 @@ class TestHeroB2:
         assert "&lt;img" in html
 
     def test_label_font_size_meets_nano_floor(self, generator, project):
-        """DESIGN.md Nano 下限 11px —— 不得出现 9px/10px 字号。"""
+        """DESIGN.md Nano 下限 11px。
+
+        旧版只 grep 字面量 'font-size: 9px' / 'font-size: 10px'，
+        对 'font-size:10px'（无空格）、'0.625rem'、以及任何新增的小字号都无效。
+        这里改为扫描整页每一条 font-size 声明并取最小值。
+        """
         html = self._html(generator, project)
-        assert "font-size: 9px" not in html
-        assert "font-size: 10px" not in html
+        declarations = re.findall(r"font-size\s*:\s*([^;}\"']+)", html)
+        assert declarations, "页面里一条 font-size 都没有，扫描逻辑失效"
+
+        # 先确保没有 rem/em —— 否则下面的 px 扫描不能算完整覆盖。
+        relative = [d.strip() for d in declarations if re.search(r"\d\s*(rem|em)\b", d)]
+        assert not relative, f"font-size 不得使用 rem/em 单位（px 扫描会漏掉）: {relative}"
+
+        pixel_values = [float(m) for m in re.findall(r"font-size\s*:\s*([\d.]+)px", html)]
+        assert len(pixel_values) == len(declarations), (
+            f"存在非 px 的 font-size 声明: "
+            f"{[d.strip() for d in declarations if not re.match(r'^[\\d.]+px$', d.strip())]}"
+        )
+        smallest = min(pixel_values)
+        assert smallest >= 11, f"字号 {smallest}px 低于 DESIGN.md 的 Nano 下限 11px"
 
 
 class TestSectionOrder:
@@ -337,7 +415,8 @@ class TestSectionOrder:
         """失效选择器必须删干净 —— 旧 .verdict-reason 位置靠后会覆盖 Hero 的新定义。"""
         html = generator.render_html(project, REPORT_DATE)
         for selector in (".verdict-grid", ".verdict-item", ".cta-row",
-                         ".btn-ghost", ".score-bar", ".score-card"):
+                         ".btn-ghost", ".score-bar", ".score-card",
+                         ".badge-rating", "--shadow-lg"):
             assert selector not in html, f"残留失效 CSS: {selector}"
 
     def test_old_verdict_reason_selector_fully_gone(self, generator, project):
