@@ -36,9 +36,13 @@ CREATE TABLE IF NOT EXISTS projects (
 );
 CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
 CREATE INDEX IF NOT EXISTS idx_projects_pushed_at ON projects(pushed_at);
+CREATE INDEX IF NOT EXISTS idx_projects_backlog ON projects(status, total_score DESC);
 """
 
 _PUSHED_STATUSES = ("pushed", "degraded")
+# 分析过但从未推送出去的项目 —— 候补池。
+# 这些记录带着完整的 LLM 分析 JSON，重新拿来推送时无需再调模型。
+_BACKLOG_STATUSES = ("skipped", "failed")
 
 
 class Database:
@@ -64,6 +68,16 @@ class Database:
 
     def init_schema(self) -> None:
         with self.connect() as conn:
+            # NAS 可能突然断电。WAL 的崩溃恢复能力远好于默认的 delete journal，
+            # 而这个库现在是候补池的唯一副本，损坏的代价比以前高得多。
+            # 注意：WAL 不能用在网络文件系统上 —— DATA_DIR 必须是 NAS 本地路径，
+            # 不能指向 SMB/NFS 挂载点。失败时退回默认模式而不是让程序起不来。
+            try:
+                mode = conn.execute("PRAGMA journal_mode=WAL").fetchone()[0]
+                if str(mode).lower() != "wal":
+                    LOGGER.warning("无法启用 WAL（当前 %s）—— DATA_DIR 是否在网络挂载上？", mode)
+            except sqlite3.Error as exc:
+                LOGGER.warning("启用 WAL 失败，沿用默认 journal 模式: %s", exc)
             conn.executescript(SCHEMA)
         LOGGER.debug("SQLite 初始化完成: %s", self.path)
 
@@ -128,6 +142,33 @@ class Database:
             return int(got["id"]) if got else -1
 
     # ------------------------------------------------------------------ 查询
+
+    def best_backlog(self) -> dict[str, Any] | None:
+        """候补池里总分最高的一条，没有则返回 None。
+
+        候补池 = 分析过但从未推送出去的项目。每天分析 5 个只推 1 个，
+        另外 4 个过了 GitHub 的「近 3 天」搜索窗口就再也不会出现在候选里，
+        但它们的完整分析结果还在库里 —— 当天所有新项目都打不过它时就拿它顶上。
+        """
+        placeholders = ",".join("?" * len(_BACKLOG_STATUSES))
+        with self.connect() as conn:
+            row = conn.execute(
+                f"SELECT * FROM projects WHERE status IN ({placeholders}) "
+                f"AND total_score IS NOT NULL "
+                f"ORDER BY total_score DESC, stars DESC LIMIT 1",
+                _BACKLOG_STATUSES,
+            ).fetchone()
+        return dict(row) if row else None
+
+    def backlog_size(self) -> int:
+        placeholders = ",".join("?" * len(_BACKLOG_STATUSES))
+        with self.connect() as conn:
+            return int(
+                conn.execute(
+                    f"SELECT COUNT(*) AS c FROM projects WHERE status IN ({placeholders})",
+                    _BACKLOG_STATUSES,
+                ).fetchone()["c"]
+            )
 
     def recent(self, limit: int = 20) -> list[dict[str, Any]]:
         with self.connect() as conn:

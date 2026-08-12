@@ -20,7 +20,7 @@ from zoneinfo import ZoneInfo
 import requests
 from pydantic import ValidationError
 
-from ai_analyzer import AIAnalyzer, LLMClient, pick_winner
+from ai_analyzer import AIAnalyzer, LLMClient, pick_winner, restore_from_backlog
 from config import Settings, apply_tls_settings, load_settings, setup_logging
 from db import Database
 from github_client import GitHubClient, GitHubError
@@ -48,6 +48,7 @@ class RunSummary:
     report_url: str = ""
     pushed: bool = False
     degraded: bool = False
+    from_backlog: bool = False
     errors: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict[str, Any]:
@@ -63,8 +64,21 @@ class RunSummary:
             "report_url": self.report_url,
             "pushed": self.pushed,
             "degraded": self.degraded,
+            "from_backlog": self.from_backlog,
             "errors": self.errors,
         }
+
+
+def _backlog_repo_still_alive(github: Any, project: AnalyzedProject) -> bool:
+    """推候补项目前确认仓库还在。客户端不支持检查时一律放行。"""
+    check = getattr(github, "repo_exists", None)
+    if check is None:
+        return True
+    try:
+        return bool(check(project.repo.full_name))
+    except Exception:  # noqa: BLE001 — 检查本身出错不该拦住推送
+        LOGGER.warning("仓库存活检查异常，按存活处理: %s", project.repo.full_name)
+        return True
 
 
 # ====================================================================== 组装
@@ -157,8 +171,43 @@ def run_once(settings: Settings, *, report_date: date | None = None,
     summary.candidates = len(candidates)
     LOGGER.info("去重后剩余 %d 个候选", len(candidates))
 
-    if not candidates:
-        LOGGER.info("今日无新项目")
+    # --- 3. 分析打分 ---------------------------------------------------
+    projects: list[AnalyzedProject] = []
+    if candidates:
+        github.enrich(candidates, max_chars=settings.readme_max_chars)
+        projects = analyzer.analyze_all(candidates)
+        for p in sorted(projects, key=lambda x: x.total_score, reverse=True):
+            LOGGER.info(
+                "  %-40s 总分 %5.1f %s",
+                p.repo.full_name, p.total_score, "(降级)" if p.analysis.degraded else "",
+            )
+    else:
+        LOGGER.info("今日无新项目 —— 直接看候补池")
+
+    # --- 4. 选优：今天的候选 ∪ 候补池，取全局最高分 ----------------------
+    # 每天分析 5 个只推 1 个，落选的 4 个过了 GitHub「近 3 天」的搜索窗口
+    # 就再也不会出现在候选里。它们的完整分析结果还在库里，当天所有新项目
+    # 都打不过其中某一个时，就把那个顶上来推 —— 无需再调 LLM。
+    today_winner = pick_winner(projects)
+    winner = today_winner
+    backlog_row = db.best_backlog()
+
+    if backlog_row is not None:
+        backlog_score = float(backlog_row.get("total_score") or 0)
+        today_score = today_winner.total_score if today_winner else -1.0
+        LOGGER.info(
+            "候补池 %d 条，最高 %s (%.1f) vs 今日最高 %.1f",
+            db.backlog_size(), backlog_row.get("repo_name"), backlog_score, today_score,
+        )
+        if backlog_score > today_score:
+            restored = restore_from_backlog(backlog_row)
+            if restored is not None and _backlog_repo_still_alive(github, restored):
+                winner = restored
+                summary.from_backlog = True
+                LOGGER.info("改用候补池项目（当日新项目均未超过它）")
+
+    if winner is None:
+        LOGGER.info("今日无候选，候补池也是空的")
         summary.reason = "去重后无候选项目"
         summary.ok = True
         if settings.notify_empty and not settings.dry_run:
@@ -168,23 +217,13 @@ def run_once(settings: Settings, *, report_date: date | None = None,
                 summary.errors.append(result.message)
         return summary
 
-    # --- 3. 分析打分 ---------------------------------------------------
-    github.enrich(candidates, max_chars=settings.readme_max_chars)
-    projects = analyzer.analyze_all(candidates)
-    for p in sorted(projects, key=lambda x: x.total_score, reverse=True):
-        LOGGER.info(
-            "  %-40s 总分 %5.1f %s",
-            p.repo.full_name, p.total_score, "(降级)" if p.analysis.degraded else "",
-        )
-
-    # --- 4. 选优 -------------------------------------------------------
-    winner = pick_winner(projects)
-    if winner is None:
-        summary.reason = "没有可用的分析结果"
-        return summary
     summary.winner = winner
     summary.degraded = winner.analysis.degraded
-    LOGGER.info("🏆 胜出: %s (%.1f 分)", winner.repo.full_name, winner.total_score)
+    LOGGER.info(
+        "🏆 胜出: %s (%.1f 分)%s",
+        winner.repo.full_name, winner.total_score,
+        f" —— 往期精选，分析于 {winner.backlog_analyzed_at}" if winner.from_backlog else "",
+    )
 
     # --- 5. 生成报告 + 归档 --------------------------------------------
     report_path, report_url = generator.write_report(winner, report_date)
@@ -215,6 +254,12 @@ def run_once(settings: Settings, *, report_date: date | None = None,
             continue
         loser.status = "skipped"
         db.save_project(loser.to_db_row())
+        # 落选项目进候补池。SQLite 是候补池的唯一副本，NAS 上那个库
+        # 损坏就全没了 —— 顺手落一份 Markdown 便于人工恢复。
+        try:
+            generator.write_archive(loser, report_date, subdir="backlog")
+        except OSError as exc:
+            LOGGER.warning("候补归档写入失败 %s: %s", loser.repo.full_name, exc)
 
     summary.ok = True
     summary.reason = "完成"

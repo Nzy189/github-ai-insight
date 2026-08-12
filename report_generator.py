@@ -153,6 +153,8 @@ class ReportGenerator:
                 analysis.difficulty, "badge-difficulty-mid"
             ),
             "intro_html": render_markdown(analysis.detailed_intro),
+            "from_backlog": project.from_backlog,
+            "backlog_analyzed_at": project.backlog_analyzed_at,
             "report_date": report_date.strftime("%Y-%m-%d"),
             "created_display": _format_date(repo.created_at),
             "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -240,9 +242,15 @@ class ReportGenerator:
 
         return "\n".join(lines) + "\n"
 
-    def write_archive(self, project: AnalyzedProject, report_date: date) -> Path:
-        """写入 ./data/archive/YYYY-MM/YYYY-MM-DD-{owner}_{repo}.md"""
-        month_dir = self.archive_dir / report_date.strftime("%Y-%m")
+    def write_archive(self, project: AnalyzedProject, report_date: date,
+                      *, subdir: str = "") -> Path:
+        """写入 ./data/archive/[subdir/]YYYY-MM/YYYY-MM-DD-{owner}_{repo}.md
+
+        subdir="backlog" 用于落选项目：SQLite 是候补池的唯一副本，
+        NAS 上那个库一旦损坏候补池就没了，落一份文本副本便于人工恢复。
+        """
+        month_dir = self.archive_dir / subdir / report_date.strftime("%Y-%m") if subdir \
+            else self.archive_dir / report_date.strftime("%Y-%m")
         month_dir.mkdir(parents=True, exist_ok=True)
         path = month_dir / f"{report_date.strftime('%Y-%m-%d')}-{project.repo.slug}.md"
         path.write_text(self.build_markdown(project, report_date), encoding="utf-8")

@@ -44,6 +44,27 @@ class Repo:
         return self.full_name.split("/")[-1]
 
     @classmethod
+    def from_db_row(cls, row: dict[str, Any]) -> "Repo":
+        """从 projects 表的一行还原 Repo —— 候补池取用时走这条路。
+
+        只还原推送与渲染需要的字段；fork/issue 数当时没存，留默认值。
+        """
+        try:
+            topics = json.loads(row.get("topics") or "[]")
+        except (json.JSONDecodeError, TypeError):
+            topics = []
+        full_name = row.get("repo_name") or ""
+        return cls(
+            full_name=full_name,
+            html_url=row.get("repo_url") or f"https://github.com/{full_name}",
+            description=row.get("description") or "",
+            language=row.get("language") or "",
+            topics=topics if isinstance(topics, list) else [],
+            stars=int(row.get("stars") or 0),
+            owner=full_name.split("/")[0] if "/" in full_name else "",
+        )
+
+    @classmethod
     def from_api(cls, item: dict[str, Any]) -> "Repo":
         owner = (item.get("owner") or {}).get("login", "")
         return cls(
@@ -144,6 +165,9 @@ class AnalyzedProject:
     report_url: str = ""
     status: Status = "skipped"
     error_message: str = ""
+    # 取自候补池（往期分析过但没推送过），而非当天新抓取的
+    from_backlog: bool = False
+    backlog_analyzed_at: str = ""
 
     @property
     def total_score(self) -> float:

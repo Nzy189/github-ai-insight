@@ -236,6 +236,9 @@ class MockGitHubClient:
         LOGGER.info("[MOCK] 返回 %d 个假仓库（近 %d 天）", min(limit, len(self.repos)), days)
         return sorted(self.repos, key=lambda r: r.stars, reverse=True)[:limit]
 
+    def repo_exists(self, full_name: str) -> bool:
+        return any(r.full_name == full_name for r in self.repos)
+
     def fetch_readme(self, full_name: str, *, max_chars: int = 24_000) -> str:
         for repo in self.repos:
             if repo.full_name == full_name:

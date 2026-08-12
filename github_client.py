@@ -187,6 +187,28 @@ class GitHubClient:
             text = text[:max_chars] + "\n\n...(README 已截断)"
         return text
 
+    def repo_exists(self, full_name: str) -> bool:
+        """确认仓库还在（没被删除或改名）。
+
+        候补池里的项目可能是几周前分析的，推之前花一次请求确认一下，
+        免得推出去的链接是 404。任何检查失败都当作"还在"——
+        网络抖动不该阻止推送。
+        """
+        try:
+            resp = self.session.get(
+                f"{API_ROOT}/repos/{full_name}",
+                headers=self._headers(),
+                timeout=self.timeout,
+                allow_redirects=False,
+            )
+        except requests.RequestException as exc:
+            LOGGER.warning("仓库存活检查失败（按存活处理）%s: %s", full_name, exc)
+            return True
+        if resp.status_code == 404:
+            LOGGER.warning("仓库已不存在: %s", full_name)
+            return False
+        return True
+
     def enrich(self, repos: list[Repo], *, max_chars: int = 24_000) -> list[Repo]:
         """为每个仓库填充 README。"""
         for repo in repos:

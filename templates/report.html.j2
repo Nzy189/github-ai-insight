@@ -112,6 +112,17 @@ body {
 
 /* ---------------------------------------------------------- Hero (B2) */
 .hero { margin-bottom: 48px; }
+.backlog-note {
+  display: inline-block;
+  background: var(--color-accent-subtle);
+  color: var(--color-accent-hover);
+  border-radius: 9999px;
+  padding: 3px 12px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  margin-bottom: 12px;
+}
 .hero h1 {
   font-size: 26px;
   font-weight: 700;
@@ -518,6 +529,11 @@ footer a:hover { color: var(--color-accent-hover); }
 
   <!-- ============ Hero (B2) ============ -->
   <div class="hero">
+    {% if from_backlog %}
+    <div class="backlog-note">
+      往期精选 · 分析于 {{ backlog_analyzed_at }} · 当日新项目均未超过它
+    </div>
+    {% endif %}
     <h1>{{ analysis.one_liner }}</h1>
     <div class="hero-sub">
       <span class="mono">{{ repo.full_name }}</span>

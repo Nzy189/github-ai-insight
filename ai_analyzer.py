@@ -469,6 +469,34 @@ class AIAnalyzer:
         return [AnalyzedProject(repo=repo, analysis=self.analyze(repo)) for repo in repos]
 
 
+def restore_from_backlog(row: dict[str, Any]) -> AnalyzedProject | None:
+    """把候补池的一行还原成可直接推送的 AnalyzedProject，不再调用 LLM。
+
+    `ai_summary` 存的是当初 LLM 的原始 JSON（降级记录存的是 `as_dict()` 的产物），
+    两种形态键名一致，都能交给 `normalize_analysis` 重新规整 —— 包括早期
+    没有 `tldr` 字段的老记录，会走逐字段兜底而不是抛异常。
+    """
+    repo = Repo.from_db_row(row)
+    if not repo.full_name:
+        LOGGER.warning("候补记录缺少 repo_name，跳过")
+        return None
+
+    try:
+        payload = json.loads(row.get("ai_summary") or "{}")
+    except (json.JSONDecodeError, TypeError):
+        LOGGER.warning("候补记录 %s 的 ai_summary 不是合法 JSON，按空处理", repo.full_name)
+        payload = {}
+    if not isinstance(payload, dict):
+        payload = {}
+
+    return AnalyzedProject(
+        repo=repo,
+        analysis=normalize_analysis(payload, repo),
+        from_backlog=True,
+        backlog_analyzed_at=str(row.get("fetched_at") or "")[:10],
+    )
+
+
 def pick_winner(projects: list[AnalyzedProject]) -> AnalyzedProject | None:
     """PRD §3.2: 选出加权总分最高的 1 个。同分时 star 多者胜。"""
     if not projects:
