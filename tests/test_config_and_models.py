@@ -92,3 +92,29 @@ class TestRepo:
         assert r.topics == []
         assert r.stars == 12
         assert r.owner == "a"
+
+
+from models import Tldr
+
+
+class TestTldr:
+    def test_defaults_are_empty(self):
+        t = Tldr()
+        assert t.pain == ""
+        assert t.solution == ""
+        assert t.fit == ""
+        assert t.is_empty is True
+
+    def test_is_empty_false_when_any_field_set(self):
+        assert Tldr(pain="x").is_empty is False
+        assert Tldr(solution="x").is_empty is False
+        assert Tldr(fit="x").is_empty is False
+
+    def test_as_dict(self):
+        t = Tldr(pain="痛", solution="解", fit="配")
+        assert t.as_dict() == {"pain": "痛", "solution": "解", "fit": "配"}
+
+    def test_analysis_carries_tldr(self, analysis):
+        assert isinstance(analysis.tldr, Tldr)
+        assert "tldr" in analysis.as_dict()
+        assert analysis.as_dict()["tldr"] == analysis.tldr.as_dict()

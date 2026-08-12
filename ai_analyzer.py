@@ -13,7 +13,7 @@ from typing import Any
 
 import requests
 
-from models import Analysis, AnalyzedProject, Repo, Scores
+from models import Analysis, AnalyzedProject, Repo, Scores, Tldr
 
 LOGGER = logging.getLogger(__name__)
 
@@ -135,6 +135,14 @@ def build_degraded_analysis(repo: Repo, reason: str) -> Analysis:
             popularity=heuristic_popularity(repo.stars),
             nas_usability=50,
         ),
+        tldr=Tldr(
+            pain=repo.description.strip() or "该仓库未填写描述",
+            solution=(
+                f"主语言 {repo.language or '未知'}"
+                + (f"，Topics: {', '.join(repo.topics[:3])}" if repo.topics else "")
+            ),
+            fit="AI 分析不可用，部署要求请查看仓库 README",
+        ),
         degraded=True,
         degrade_reason=reason,
     )
@@ -185,6 +193,33 @@ def _as_str(value: Any, default: str = "") -> str:
     return str(value).strip()
 
 
+def normalize_tldr(payload: dict[str, Any], repo: Repo) -> Tldr:
+    """解析首屏三要素，逐字段兜底。
+
+    模型漏一个字段不该毁掉整页，所以这里不整体降级。
+    solution 只在 pain 没有消耗掉 description 时才回退到它 ——
+    否则首屏会把同一句话印两遍。
+    """
+    raw = payload.get("tldr")
+    if not isinstance(raw, dict):
+        raw = {}
+
+    description = repo.description.strip()
+
+    pain = _as_str(raw.get("pain")) or description
+    used_description_for_pain = bool(description) and pain == description
+
+    solution = _as_str(raw.get("solution"))
+    if not solution and not used_description_for_pain:
+        solution = description
+
+    fit = _as_str(raw.get("fit"))
+    if not fit and any(t.lower() == "docker" for t in repo.topics):
+        fit = "仓库标注了 Docker 支持"
+
+    return Tldr(pain=pain, solution=solution, fit=fit)
+
+
 def normalize_analysis(payload: dict[str, Any], repo: Repo) -> Analysis:
     """把 LLM 的 JSON 规整成 Analysis，越界值一律夹紧而不是报错。"""
     raw_highlights = payload.get("highlights")
@@ -221,6 +256,7 @@ def normalize_analysis(payload: dict[str, Any], repo: Repo) -> Analysis:
         rating_reason=_as_str(payload.get("rating_reason")),
         detailed_intro=_as_str(payload.get("detailed_intro")) or _as_str(payload.get("one_liner")),
         scores=scores,
+        tldr=normalize_tldr(payload, repo),
         raw_json=json.dumps(payload, ensure_ascii=False, indent=2),
     )
 
