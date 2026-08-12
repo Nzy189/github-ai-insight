@@ -923,7 +923,16 @@ class TestSectionOrder:
         for selector in (".verdict-grid", ".verdict-item", ".cta-row",
                          ".btn-ghost", ".score-bar", ".score-card"):
             assert selector not in html, f"残留失效 CSS: {selector}"
-        assert html.count(".verdict-reason") == 1
+
+    def test_old_verdict_reason_selector_fully_gone(self, generator, project):
+        """Task 3 已把 Hero 的同名规则重命名为 .hero-verdict-reason，
+        因此删掉旧的 15px 规则后，.verdict-reason 应当一个都不剩。
+        注意 '.hero-verdict-reason' 不含 '.verdict-reason' 子串（点后面接的是 h），
+        所以这条断言不会被 Hero 的新类名意外满足。"""
+        html = generator.render_html(project, REPORT_DATE)
+        assert ".verdict-reason" not in html
+        assert html.count(".hero-verdict-reason") == 1
+        assert 'class="hero-verdict-reason"' in html
 ```
 
 - [ ] **Step 2: 运行测试确认失败**
@@ -1083,7 +1092,7 @@ Expected: FAIL — `ValueError: substring not found`（`id="sec-highlights"` 尚
 - `.verdict-grid`
 - `.verdict-item`、`.verdict-item .k`、`.verdict-item .v`
 - `.stars`、`.stars .off`（已由 `.verdict-stars` 取代）
-- `.verdict-reason`（旧的 15px 版本，Task 3 已在 Hero CSS 中重新定义为 13px）
+- `.verdict-reason`（旧的 15px 版本。Task 3 已把 Hero 里的同名规则重命名为 `.hero-verdict-reason` 以避开层叠冲突，因此这条删除后 `.verdict-reason` 应当在页面中**完全消失**）
 - `.cta-row`
 - `.btn-ghost`、`.btn-ghost:hover`（底部 CTA 行删除后无使用点）
 - `.score-bar`、`.score-bar-fill`（已由 `.score-line-bar` / `.score-line-fill` 取代）
