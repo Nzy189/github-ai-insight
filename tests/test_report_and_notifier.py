@@ -4,7 +4,7 @@ from datetime import date
 
 import pytest
 
-from models import Analysis, Scores
+from models import Analysis, Scores, Tldr
 from report_generator import ReportGenerator, render_markdown, score_tier
 from wechat_notifier import WeChatNotifier, build_empty_markdown, build_markdown
 
@@ -218,3 +218,66 @@ class TestNotifier:
         notifier = WeChatNotifier("http://hook", session=session, retry_delays=(0, 0))
         assert notifier.send_markdown("hi").ok is False
         assert len(session.calls) == 3
+
+
+class TestHeroB2:
+    def _html(self, generator, project):
+        return generator.render_html(project, REPORT_DATE)
+
+    def test_one_liner_is_the_h1(self, generator, project):
+        html = self._html(generator, project)
+        h1 = html.split("<h1")[1].split("</h1>")[0]
+        assert project.analysis.one_liner in h1
+        assert project.repo.repo_name not in h1
+
+    def test_repo_name_demoted_to_subtitle(self, generator, project):
+        html = self._html(generator, project)
+        assert project.repo.full_name in html
+        assert "hero-sub" in html
+
+    def test_tldr_three_rows_rendered(self, generator, project):
+        project.analysis.tldr = Tldr(pain="痛点内容", solution="方案内容", fit="部署内容")
+        html = self._html(generator, project)
+        for text in ("痛点内容", "方案内容", "部署内容"):
+            assert text in html
+        assert html.count('class="tldr-row"') == 3
+
+    def test_empty_tldr_row_is_hidden(self, generator, project):
+        project.analysis.tldr = Tldr(pain="只有痛点", solution="", fit="")
+        html = self._html(generator, project)
+        assert html.count('class="tldr-row"') == 1
+        assert "只有痛点" in html
+
+    def test_tldr_section_absent_when_all_empty(self, generator, project):
+        project.analysis.tldr = Tldr()
+        html = self._html(generator, project)
+        assert 'class="tldr-row"' not in html
+
+    def test_tldr_labels_present(self, generator, project):
+        project.analysis.tldr = Tldr(pain="a", solution="b", fit="c")
+        html = self._html(generator, project)
+        for label in ("痛点", "怎么解决", "我能用吗"):
+            assert label in html
+
+    def test_verdict_bar_carries_rating_and_difficulty(self, generator, project):
+        html = self._html(generator, project)
+        assert "verdict-bar" in html
+        assert project.analysis.rating_reason in html
+        assert "入门友好" in html or "需要折腾" in html or "硬核" in html
+
+    def test_ring_geometry_matches_52px(self, generator, project):
+        html = self._html(generator, project)
+        assert 'viewBox="0 0 52 52"' in html
+        assert 'cx="26"' in html
+
+    def test_tldr_is_escaped(self, generator, project):
+        project.analysis.tldr = Tldr(pain='<img src=x onerror="alert(1)">')
+        html = self._html(generator, project)
+        assert 'onerror="alert(1)"' not in html
+        assert "&lt;img" in html
+
+    def test_label_font_size_meets_nano_floor(self, generator, project):
+        """DESIGN.md Nano 下限 11px —— 不得出现 9px/10px 字号。"""
+        html = self._html(generator, project)
+        assert "font-size: 9px" not in html
+        assert "font-size: 10px" not in html
