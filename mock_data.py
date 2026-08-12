@@ -105,6 +105,11 @@ def _payload(**kwargs: Any) -> str:
 MOCK_LLM_RESPONSES: dict[str, str] = {
     "localstack-ai/agentmesh": _payload(
         one_liner="把多智能体编排从云平台搬回自己的机器，一个二进制文件就能跑起来",
+        tldr={
+            "pain": "想串起几个 Agent 协同干活，最后写出一堆胶水代码还难排查",
+            "solution": "写一个 YAML 描述任务图，调度、重试、超时全交给运行时",
+            "fit": "单个 Go 二进制，镜像不到 40MB，2GB 内存的 NAS 能跑",
+        },
         highlights=[
             "单二进制部署，无需 Python 环境或依赖地狱，NAS 上 docker run 一条命令启动",
             "内置任务图编排引擎，支持 Agent 之间的消息传递、重试与超时控制",
@@ -132,6 +137,11 @@ MOCK_LLM_RESPONSES: dict[str, str] = {
     ),
     "quietlabs/ragfoundry": _payload(
         one_liner="用拖拽的方式搭 RAG 流水线，省掉反复调参写胶水代码的时间",
+        tldr={
+            "pain": "调 RAG 参数每改一次就要重跑索引，一下午就没了",
+            "solution": "把整条流水线做成可视化节点，改完点一下就重跑并出评估对比",
+            "fit": "有 Docker Compose，但本地 Embedding 模型内存占用可观",
+        },
         highlights=[
             "可视化编辑器，切分策略、Embedding 模型、检索方式都能在界面上直接换",
             "内置 12 种分块策略与 6 种向量库适配器，切换只需改一个下拉框",
@@ -159,6 +169,11 @@ MOCK_LLM_RESPONSES: dict[str, str] = {
     "nano-tools/whisperbox": "```json\n"
     + _payload(
         one_liner="没有显卡也能跑的语音转文字服务，专为低功耗 NAS 优化",
+        tldr={
+            "pain": "没显卡的话，Whisper 转写一小时录音要等大半天",
+            "solution": "Rust 重写推理链路并做 CPU 量化，还能监听目录自动转写",
+            "fit": "纯 CPU，内存峰值约 300MB，docker run 挂两个目录即可",
+        },
         highlights=[
             "纯 CPU 推理，300MB 内存占用，群晖 J 系列低压 U 也能实时转写",
             "Rust 实现，冷启动 200ms，比 Python 版本快一个数量级",
@@ -188,6 +203,7 @@ MOCK_LLM_RESPONSES: dict[str, str] = {
     # 越界值与非法枚举 —— 测试夹紧与回退
     "edge-cases/promptforge": _payload(
         one_liner="给提示词做版本管理和自动评测，让 prompt 迭代有据可依",
+        tldr={"pain": "同一个 prompt 三个版本散落各处，改坏了不知道是哪次改的"},
         highlights=[
             "Prompt 版本化与 diff，改动一目了然",
             "批量评测跑分，支持自定义评分函数",
@@ -250,6 +266,7 @@ class MockLLMClient:
         self.calls.append("<unknown>")
         return _payload(
             one_liner="这是一个 mock 生成的兜底摘要",
+            tldr={"pain": "mock 痛点", "solution": "mock 方案", "fit": "mock 部署说明"},
             highlights=["mock 亮点 A", "mock 亮点 B"],
             target_audience="本地测试",
             difficulty="medium",

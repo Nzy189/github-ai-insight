@@ -36,7 +36,6 @@
 
   --container-max: 800px;
   --shadow-md: 0 1px 2px rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.15);
-  --shadow-lg: 0 2px 4px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.25);
 }
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -111,57 +110,74 @@ body {
 .degraded-banner .text { font-size: 14px; color: #FBBF24; }
 .degraded-banner .text strong { display: block; margin-bottom: 4px; }
 
-/* ---------------------------------------------------------- Hero */
-.hero { text-align: center; margin-bottom: 48px; }
+/* ---------------------------------------------------------- Hero (B2) */
+.hero { margin-bottom: 48px; }
 .hero h1 {
-  font-family: var(--font-mono);
-  font-size: 36px;
+  font-size: 26px;
   font-weight: 700;
-  line-height: 1.2;
-  letter-spacing: -0.02em;
-  margin: 0 0 12px;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+  margin: 0 0 10px;
   color: var(--color-text-primary);
   word-break: break-word;
 }
-.hero-meta {
+.hero-sub {
   display: flex;
   flex-wrap: wrap;
-  justify-content: center;
   align-items: center;
-  gap: 8px 16px;
+  gap: 6px 10px;
   font-size: 12px;
-  letter-spacing: 0.01em;
-  color: var(--color-text-secondary);
-  margin-bottom: 32px;
+  color: var(--color-text-tertiary);
+  margin-bottom: 20px;
 }
-.hero-meta a { color: var(--color-accent); text-decoration: none; }
-.hero-meta a:hover { color: var(--color-accent-hover); text-decoration: underline; }
-.hero-meta .sep { color: var(--color-text-tertiary); }
-.hero-meta .mono { font-family: var(--font-mono); }
+.hero-sub .mono { font-family: var(--font-mono); }
+.hero-sub .sep { color: var(--color-text-tertiary); }
 
-.one-liner {
-  font-size: 22px;
-  font-weight: 600;
-  line-height: 1.45;
-  letter-spacing: -0.01em;
-  color: var(--color-text-primary);
-  margin: 0 auto 32px;
-  max-width: 620px;
+.tldr-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 4px 16px;
+  box-shadow: var(--shadow-md);
 }
-
-/* ---------------------------------------------------------- 评分环 */
-.score-ring-wrap {
+.tldr-row {
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
+  gap: 12px;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--color-border-subtle);
 }
-.score-ring { position: relative; width: 80px; height: 80px; }
+.tldr-row:last-child { border-bottom: none; }
+.tldr-label {
+  flex: 0 0 60px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.7;
+  color: var(--color-accent);
+}
+.tldr-text {
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--color-text-primary);
+  word-break: break-word;
+}
+
+.verdict-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 16px;
+  margin-top: 12px;
+  box-shadow: var(--shadow-md);
+}
+.score-ring { position: relative; width: 52px; height: 52px; flex: 0 0 52px; }
 .score-ring svg { transform: rotate(-90deg); display: block; }
-.score-ring .track { fill: none; stroke: var(--color-border); stroke-width: 6; }
+.score-ring .track { fill: none; stroke: var(--color-border); }
 .score-ring .progress {
   fill: none;
-  stroke-width: 6;
   stroke-linecap: round;
   transition: stroke-dashoffset 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
@@ -172,17 +188,40 @@ body {
   align-items: center;
   justify-content: center;
   font-family: var(--font-mono);
-  font-size: 24px;
+  font-size: 17px;
   font-weight: 700;
   color: var(--color-text-primary);
 }
-.score-ring-label {
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.02em;
-  color: var(--color-text-secondary);
-  text-transform: uppercase;
+.verdict-text { min-width: 0; }
+.verdict-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 5px;
+  flex-wrap: wrap;
 }
+.verdict-stars {
+  color: var(--color-warning);
+  letter-spacing: 1px;
+  font-size: 14px;
+  white-space: nowrap;
+}
+.verdict-stars .off { color: var(--color-text-tertiary); }
+/* 星形只是装饰，评级必须同时以文本形式出现（WCAG 1.4.1）。 */
+.verdict-rating {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+.hero-verdict-reason {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--color-text-secondary);
+}
+.hero-cta { display: flex; width: 100%; margin-top: 12px; }
 
 /* ---------------------------------------------------------- 区块 */
 section { margin-bottom: 48px; }
@@ -204,50 +243,61 @@ section { margin-bottom: 48px; }
   box-shadow: var(--shadow-md);
 }
 
-.score-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 16px;
-}
-.score-card {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-  padding: 20px;
-  box-shadow: var(--shadow-md);
-}
-.score-card-head {
+/* ---------------------------------------------------------- 评分细条 */
+.score-line {
   display: flex;
-  align-items: baseline;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 0;
+}
+.score-line + .score-line { border-top: 1px solid var(--color-border-subtle); }
+.score-line-label {
+  flex: 0 0 108px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  display: flex;
   justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 12px;
+  gap: 6px;
 }
-.score-card-label { font-size: 14px; color: var(--color-text-secondary); }
-.score-card-weight {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--color-text-tertiary);
-}
-.score-card-value {
-  font-family: var(--font-mono);
-  font-size: 28px;
-  font-weight: 700;
-  line-height: 1;
-  color: var(--color-text-primary);
-  margin-bottom: 12px;
-}
-.score-bar {
+.score-line-label .w { font-family: var(--font-mono); font-size: 11px; color: var(--color-text-tertiary); }
+.score-line-bar {
+  flex: 1 1 auto;
   height: 6px;
   border-radius: 3px;
   background: var(--color-border);
   overflow: hidden;
 }
-.score-bar-fill {
+.score-line-fill {
+  display: block;
   height: 100%;
   border-radius: 3px;
   transition: width 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
+.score-line-value {
+  flex: 0 0 30px;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+.score-note {
+  margin: 14px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-border-subtle);
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+}
+.score-note strong { font-family: var(--font-mono); color: var(--color-text-secondary); }
+.audience-note {
+  margin: 16px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--color-border-subtle);
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--color-text-body);
+}
+.audience-note strong { color: var(--color-text-primary); }
 .score-high { background: linear-gradient(90deg, #22C55E, #4ADE80); }
 .score-mid  { background: linear-gradient(90deg, #F59E0B, #FBBF24); }
 .score-low  { background: linear-gradient(90deg, #EF4444, #F87171); }
@@ -275,7 +325,6 @@ section { margin-bottom: 48px; }
 .badge-difficulty-low  { background: rgba(34,197,94,0.15);  color: #4ADE80; }
 .badge-difficulty-mid  { background: rgba(245,158,11,0.15); color: #FBBF24; }
 .badge-difficulty-high { background: rgba(239,68,68,0.15);  color: #F87171; }
-.badge-rating { background: var(--color-accent-subtle); color: var(--color-accent-hover); }
 .badge-topic {
   background: var(--color-surface-elevated);
   color: var(--color-text-secondary);
@@ -352,34 +401,6 @@ section { margin-bottom: 48px; }
   color: var(--color-text-secondary);
 }
 
-/* ---------------------------------------------------------- 快速上手 */
-.verdict-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 16px;
-  margin-bottom: 20px;
-}
-.verdict-item {
-  background: var(--color-surface-elevated);
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  padding: 16px;
-}
-.verdict-item .k {
-  font-size: 12px;
-  letter-spacing: 0.01em;
-  color: var(--color-text-secondary);
-  margin-bottom: 6px;
-}
-.verdict-item .v {
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--color-text-primary);
-}
-.stars { letter-spacing: 2px; color: var(--color-warning); }
-.stars .off { color: var(--color-text-tertiary); }
-.verdict-reason { font-size: 15px; line-height: 1.6; color: var(--color-text-body); margin: 0; }
-
 /* ---------------------------------------------------------- 元数据表 */
 .meta-table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .meta-table tr { border-bottom: 1px solid var(--color-border-subtle); }
@@ -401,7 +422,6 @@ section { margin-bottom: 48px; }
 }
 
 /* ---------------------------------------------------------- CTA + Footer */
-.cta-row { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 48px; }
 .btn-primary {
   display: inline-flex;
   align-items: center;
@@ -418,26 +438,6 @@ section { margin-bottom: 48px; }
   transition: background 0.15s ease;
 }
 .btn-primary:hover { background: #2563EB; }
-.btn-ghost {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 44px;
-  background: transparent;
-  color: var(--color-text-secondary);
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  padding: 10px 20px;
-  font-size: 14px;
-  font-weight: 500;
-  text-decoration: none;
-  transition: all 0.15s ease;
-}
-.btn-ghost:hover {
-  background: var(--color-surface-elevated);
-  color: var(--color-text-primary);
-  border-color: #3F3F46;
-}
 
 footer {
   border-top: 1px solid var(--color-border-subtle);
@@ -456,15 +456,14 @@ footer a:hover { color: var(--color-accent-hover); }
   .wrap { padding: 0 16px 48px; }
   .site-header-inner { padding: 0 16px; }
   .site-header { margin-bottom: 32px; }
-  .hero h1 { font-size: 28px; }
-  .one-liner { font-size: 18px; }
+  .hero h1 { font-size: 21px; }
+  .tldr-label { flex: 0 0 52px; }
+  .tldr-text { font-size: 13px; }
+  /* 判断条在 375px 下很紧：先收星形，绝不换行、绝不低于 11px */
+  .verdict-stars { font-size: 13px; letter-spacing: 0.5px; }
   .section-title { font-size: 18px; }
-  .score-grid { grid-template-columns: 1fr; }
-  .verdict-grid { grid-template-columns: 1fr; }
-  .score-ring { width: 64px; height: 64px; }
-  .score-ring .value { font-size: 20px; }
+  .score-line-label { flex: 0 0 92px; font-size: 12px; }
   .prose { font-size: 15px; }
-  .cta-row .btn-primary, .cta-row .btn-ghost { flex: 1 1 100%; }
   .meta-table th { width: 40%; }
 }
 
@@ -490,8 +489,7 @@ footer a:hover { color: var(--color-accent-hover); }
     --color-border-subtle: #E4E4E7;
   }
   body { background: #FFFFFF; color: #18181B; }
-  .card, .score-card, .verdict-item { box-shadow: none; }
-  .cta-row { display: none; }
+  .card { box-shadow: none; }
   section { break-inside: avoid; margin-bottom: 24px; }
   a { color: #1D4ED8 !important; }
 }
@@ -518,10 +516,10 @@ footer a:hover { color: var(--color-accent-hover); }
   </div>
   {% endif %}
 
-  <!-- ============ Hero ============ -->
+  <!-- ============ Hero (B2) ============ -->
   <div class="hero">
-    <h1>{{ repo.repo_name }}</h1>
-    <div class="hero-meta">
+    <h1>{{ analysis.one_liner }}</h1>
+    <div class="hero-sub">
       <span class="mono">{{ repo.full_name }}</span>
       <span class="sep">·</span>
       <span class="mono">★ {{ '{:,}'.format(repo.stars) }}</span>
@@ -529,15 +527,23 @@ footer a:hover { color: var(--color-accent-hover); }
       <span class="sep">·</span>
       <span class="mono">{{ repo.language }}</span>
       {% endif %}
-      <span class="sep">·</span>
-      <a href="{{ repo.html_url }}" target="_blank" rel="noopener noreferrer">在 GitHub 查看 ↗</a>
     </div>
 
-    <p class="one-liner">{{ analysis.one_liner }}</p>
+    {% if tldr_rows %}
+    <div class="tldr-card">
+      {% for row in tldr_rows %}
+      <div class="tldr-row">
+        <div class="tldr-label">{{ row.label }}</div>
+        <div class="tldr-text">{{ row.text }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
 
-    <div class="score-ring-wrap">
+    <div class="verdict-bar">
       <div class="score-ring">
-        <svg width="80" height="80" viewBox="0 0 80 80" role="img"
+        <svg width="{{ ring_box }}" height="{{ ring_box }}"
+             viewBox="0 0 {{ ring_box }} {{ ring_box }}" role="img"
              aria-label="综合评分 {{ total_score }} 分，满分 100 分">
           <defs>
             <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="0%">
@@ -545,69 +551,57 @@ footer a:hover { color: var(--color-accent-hover); }
               <stop offset="100%" stop-color="{{ ring_end }}"/>
             </linearGradient>
           </defs>
-          <circle class="track" cx="40" cy="40" r="34"/>
-          <circle class="progress" cx="40" cy="40" r="34"
-                  stroke="url(#ringGrad)"
+          <circle class="track" cx="{{ ring_center }}" cy="{{ ring_center }}"
+                  r="{{ ring_radius }}" stroke-width="{{ ring_stroke }}"/>
+          <circle class="progress" cx="{{ ring_center }}" cy="{{ ring_center }}"
+                  r="{{ ring_radius }}" stroke="url(#ringGrad)"
+                  stroke-width="{{ ring_stroke }}"
                   stroke-dasharray="{{ ring_circumference }}"
                   stroke-dashoffset="{{ ring_offset }}"/>
         </svg>
         <div class="value">{{ total_score_int }}</div>
       </div>
-      <div class="score-ring-label">综合评分 / 100</div>
-    </div>
-  </div>
-
-  <!-- ============ 四维评分 ============ -->
-  <section aria-labelledby="sec-scores">
-    <h2 class="section-title" id="sec-scores">评分详情</h2>
-    <div class="score-grid">
-      {% for dim in dimensions %}
-      <div class="score-card">
-        <div class="score-card-head">
-          <span class="score-card-label">{{ dim.label }}</span>
-          <span class="score-card-weight">{{ dim.weight }}</span>
-        </div>
-        <div class="score-card-value">{{ dim.score }}</div>
-        <div class="score-bar" role="img" aria-label="{{ dim.label }} {{ dim.score }} 分">
-          <div class="score-bar-fill {{ dim.css_class }}" style="width: {{ dim.score }}%"></div>
-        </div>
-      </div>
-      {% endfor %}
-    </div>
-  </section>
-
-  <!-- ============ 快速判断 ============ -->
-  <section aria-labelledby="sec-verdict">
-    <h2 class="section-title" id="sec-verdict">快速上手</h2>
-    <div class="card">
-      <div class="verdict-grid">
-        <div class="verdict-item">
-          <div class="k">推荐指数</div>
-          <div class="v stars">
+      <div class="verdict-text">
+        <div class="verdict-head">
+          <span class="verdict-stars" role="img"
+                aria-label="推荐指数 {{ analysis.rating }}/5">
             {%- for _ in range(analysis.rating) %}★{% endfor -%}
             {%- for _ in range(5 - analysis.rating) %}<span class="off">★</span>{% endfor -%}
-            &nbsp;<span style="font-family: var(--font-mono); font-size: 14px; color: var(--color-text-secondary);">{{ analysis.rating }}/5</span>
-          </div>
+          </span>
+          <span class="verdict-rating" aria-hidden="true">{{ analysis.rating }}/5</span>
+          <span class="badge {{ difficulty_class }}"
+                aria-label="上手难度 {{ difficulty_label }}">{{ difficulty_label }}</span>
         </div>
-        <div class="verdict-item">
-          <div class="k">上手难度</div>
-          <div class="v">
-            <span class="badge {{ difficulty_class }}" style="font-size: 13px; padding: 4px 12px;">
-              {{ difficulty_label }}
-            </span>
-          </div>
-        </div>
+        {% if analysis.rating_reason %}
+        <p class="hero-verdict-reason">{{ analysis.rating_reason }}</p>
+        {% endif %}
       </div>
-      {% if analysis.rating_reason %}
-      <p class="verdict-reason">{{ analysis.rating_reason }}</p>
+    </div>
+
+    <a class="btn-primary hero-cta" href="{{ repo.html_url }}"
+       target="_blank" rel="noopener noreferrer">前往 GitHub 仓库 ↗</a>
+  </div>
+
+  <!-- ============ 技术亮点 ============ -->
+  {% if analysis.highlights or analysis.target_audience %}
+  <section aria-labelledby="sec-highlights">
+    <h2 class="section-title" id="sec-highlights">技术亮点</h2>
+    <div class="card">
+      {% if analysis.highlights %}
+      <ul class="highlight-list">
+        {% for item in analysis.highlights %}
+        <li>{{ item }}</li>
+        {% endfor %}
+      </ul>
       {% endif %}
       {% if analysis.target_audience %}
-      <p class="verdict-reason" style="margin-top: 12px;">
-        <strong style="color: var(--color-text-primary);">适合谁：</strong>{{ analysis.target_audience }}
+      <p class="audience-note">
+        <strong>适合谁：</strong>{{ analysis.target_audience }}
       </p>
       {% endif %}
     </div>
   </section>
+  {% endif %}
 
   <!-- ============ 详细介绍 ============ -->
   {% if intro_html %}
@@ -619,19 +613,22 @@ footer a:hover { color: var(--color-accent-hover); }
   </section>
   {% endif %}
 
-  <!-- ============ 技术亮点 ============ -->
-  {% if analysis.highlights %}
-  <section aria-labelledby="sec-highlights">
-    <h2 class="section-title" id="sec-highlights">技术亮点</h2>
+  <!-- ============ 评分依据 ============ -->
+  <section aria-labelledby="sec-scores">
+    <h2 class="section-title" id="sec-scores">评分依据</h2>
     <div class="card">
-      <ul class="highlight-list">
-        {% for item in analysis.highlights %}
-        <li>{{ item }}</li>
-        {% endfor %}
-      </ul>
+      {% for dim in dimensions %}
+      <div class="score-line">
+        <span class="score-line-label">{{ dim.label }}<span class="w">{{ dim.weight }}</span></span>
+        <span class="score-line-bar" role="img" aria-label="{{ dim.label }} {{ dim.score }} 分">
+          <span class="score-line-fill {{ dim.css_class }}" style="width: {{ dim.score }}%"></span>
+        </span>
+        <span class="score-line-value">{{ dim.score }}</span>
+      </div>
+      {% endfor %}
+      <p class="score-note">总分 = 各维度得分 × 权重之和 = <strong>{{ total_score }}</strong> / 100</p>
     </div>
   </section>
-  {% endif %}
 
   <!-- ============ 仓库信息 ============ -->
   <section aria-labelledby="sec-meta">
@@ -659,12 +656,6 @@ footer a:hover { color: var(--color-accent-hover); }
       </table>
     </div>
   </section>
-
-  <!-- ============ CTA ============ -->
-  <div class="cta-row">
-    <a class="btn-primary" href="{{ repo.html_url }}" target="_blank" rel="noopener noreferrer">前往 GitHub 仓库 ↗</a>
-    <a class="btn-ghost" href="{{ repo.html_url }}/stargazers" target="_blank" rel="noopener noreferrer">查看 Star 趋势</a>
-  </div>
 
   <footer>
     <p>由 <strong style="color: var(--color-text-secondary);">GitHub AI Insight</strong> 自动生成 · {{ generated_at }}</p>

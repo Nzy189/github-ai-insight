@@ -84,6 +84,25 @@ class Scores:
 
 
 @dataclass(slots=True)
+class Tldr:
+    """首屏三要素 —— 痛点 / 怎么解决 / 我能用吗。
+
+    任一字段允许为空：模板会整行隐藏，而不是渲染出一个空壳。
+    """
+
+    pain: str = ""
+    solution: str = ""
+    fit: str = ""
+
+    def as_dict(self) -> dict[str, str]:
+        return {"pain": self.pain, "solution": self.solution, "fit": self.fit}
+
+    @property
+    def is_empty(self) -> bool:
+        return not (self.pain or self.solution or self.fit)
+
+
+@dataclass(slots=True)
 class Analysis:
     """LLM 结构化输出。"""
 
@@ -95,6 +114,7 @@ class Analysis:
     rating_reason: str = ""
     detailed_intro: str = ""
     scores: Scores = field(default_factory=Scores)
+    tldr: Tldr = field(default_factory=Tldr)
     degraded: bool = False
     degrade_reason: str = ""
     raw_json: str = ""
@@ -102,6 +122,7 @@ class Analysis:
     def as_dict(self) -> dict[str, Any]:
         return {
             "one_liner": self.one_liner,
+            "tldr": self.tldr.as_dict(),
             "highlights": self.highlights,
             "target_audience": self.target_audience,
             "difficulty": self.difficulty,

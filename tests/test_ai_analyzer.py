@@ -12,9 +12,10 @@ from ai_analyzer import (
     extract_json,
     heuristic_popularity,
     normalize_analysis,
+    normalize_tldr,
     pick_winner,
 )
-from models import Analysis, AnalyzedProject, Repo, Scores
+from models import Analysis, AnalyzedProject, Repo, Scores, Tldr
 
 GOOD = {
     "one_liner": "一句话",
@@ -181,3 +182,143 @@ class TestPickWinner:
         a = self._p("a/few", (80, 80, 80, 80), stars=10)
         b = self._p("a/many", (80, 80, 80, 80), stars=9999)
         assert pick_winner([a, b]).repo.full_name == "a/many"
+
+
+FULL_TLDR = {
+    "pain": "平台已经能检测出你的稿子是 AI 写的",
+    "solution": "三层清理：隐形字符、文本水印、元数据",
+    "fit": "纯 Python 标准库，不用 Docker",
+}
+
+
+class TestNormalizeTldr:
+    def test_full_payload(self, repo):
+        t = normalize_tldr({"tldr": FULL_TLDR}, repo)
+        assert t.pain == FULL_TLDR["pain"]
+        assert t.solution == FULL_TLDR["solution"]
+        assert t.fit == FULL_TLDR["fit"]
+
+    def test_missing_key_entirely(self, repo):
+        """整个 tldr 缺失 → pain 取 description，solution 留空避免重复。"""
+        t = normalize_tldr({}, repo)
+        assert t.pain == repo.description
+        assert t.solution == ""
+
+    @pytest.mark.parametrize("bad", ["一段字符串", 42, None, ["a", "b"]])
+    def test_wrong_type_does_not_raise(self, repo, bad):
+        """tldr 不是 dict 时按"整个 tldr 缺失"处理：
+        pain 回退到 description，solution 留空避免重复。"""
+        t = normalize_tldr({"tldr": bad}, repo)
+        assert isinstance(t, Tldr)
+        assert t.pain == repo.description
+        assert t.solution == ""
+
+    def test_partial_only_pain(self, repo):
+        t = normalize_tldr({"tldr": {"pain": "只有痛点"}}, repo)
+        assert t.pain == "只有痛点"
+        # pain 没消耗 description，solution 可以回退到它
+        assert t.solution == repo.description
+        assert t.fit == ""
+
+    def test_solution_not_duplicated_with_pain(self, repo):
+        """pain 已回退到 description 时，solution 不得再印同一句。"""
+        t = normalize_tldr({"tldr": {"fit": "有 Docker"}}, repo)
+        assert t.pain == repo.description
+        assert t.solution == ""
+
+    def test_fit_inferred_from_docker_topic(self):
+        r = Repo(full_name="a/b", html_url="u", description="d", topics=["ai", "Docker"])
+        assert normalize_tldr({}, r).fit == "仓库标注了 Docker 支持"
+
+    def test_fit_left_empty_without_docker_topic(self, repo):
+        assert normalize_tldr({}, repo).fit == ""
+
+    def test_long_fields_are_truncated(self, repo):
+        """Prompt 要 40 字，这里只兜 80 字的病态输出 —— 一条话痨回复
+        不该把整个首屏撑爆。"""
+        long_text = "长" * 200
+        t = normalize_tldr({"tldr": {"pain": long_text, "solution": long_text, "fit": long_text}}, repo)
+        for value in (t.pain, t.solution, t.fit):
+            assert len(value) == 81
+            assert value.endswith("…")
+            assert value[:80] == "长" * 80
+
+    def test_short_fields_are_not_touched(self, repo):
+        t = normalize_tldr({"tldr": FULL_TLDR}, repo)
+        assert t.pain == FULL_TLDR["pain"]
+        assert "…" not in t.pain
+
+    def test_exactly_80_chars_is_not_truncated(self, repo):
+        t = normalize_tldr({"tldr": {"pain": "长" * 80}}, repo)
+        assert t.pain == "长" * 80
+
+    def test_description_fallback_is_also_truncated(self):
+        r = Repo(full_name="a/b", html_url="u", description="描" * 200)
+        t = normalize_tldr({}, r)
+        assert len(t.pain) == 81
+        assert t.pain.endswith("…")
+
+    def test_normalize_analysis_populates_tldr(self, repo):
+        a = normalize_analysis({**GOOD, "tldr": FULL_TLDR}, repo)
+        assert a.tldr.pain == FULL_TLDR["pain"]
+
+    def test_old_payload_without_tldr_still_works(self, repo):
+        """数据库里的旧记录没有 tldr 键 —— 不能抛异常。"""
+        a = normalize_analysis(GOOD, repo)
+        assert isinstance(a.tldr, Tldr)
+
+
+class TestDegradedTldr:
+    def test_degraded_leaves_solution_empty(self, repo):
+        """"怎么解决"这一行的标签是对内容的承诺 —— 降级时没有答案就留空，
+        模板会隐藏该行。仓库元数据已经在 highlights 和仓库信息表里了。"""
+        a = build_degraded_analysis(repo, "LLM 超时")
+        assert a.tldr.pain == repo.description
+        assert a.tldr.solution == ""
+        assert "README" in a.tldr.fit
+
+    def test_degraded_fit_does_not_fabricate(self, repo):
+        """降级时不许编造部署结论。"""
+        fit = build_degraded_analysis(repo, "x").tldr.fit
+        assert "AI 分析不可用" in fit
+        assert "Docker" not in fit
+
+    def test_degraded_pain_handles_empty_description(self):
+        r = Repo(full_name="a/b", html_url="u", description="")
+        assert build_degraded_analysis(r, "x").tldr.pain == "该仓库未填写描述"
+
+
+class TestPromptHardConstraints:
+    def _prompt(self, repo):
+        return AIAnalyzer(None).build_prompt(repo)
+
+    def test_declares_tldr_in_json_schema(self, repo):
+        p = self._prompt(repo)
+        assert '"tldr"' in p
+        assert '"pain"' in p
+        assert '"solution"' in p
+        assert '"fit"' in p
+
+    def test_has_one_liner_writing_section(self, repo):
+        assert "一句话总结（one_liner）的写法" in self._prompt(repo)
+
+    def test_has_tldr_writing_section(self, repo):
+        assert "首屏三要素（tldr）的写法" in self._prompt(repo)
+
+    def test_shows_negative_example_verbatim(self, repo):
+        """反面示例必须原样给出 —— 抽象地说'不要名词堆叠'模型听不懂。"""
+        p = self._prompt(repo)
+        assert "多供应商AI水印移除工具" in p
+        assert "名词短语堆叠" in p
+
+    def test_shows_positive_example(self, repo):
+        assert "AI 写的东西会被偷偷打上隐形标记" in self._prompt(repo)
+
+    def test_forbids_empty_fit_phrasing(self, repo):
+        assert "适合自托管用户" in self._prompt(repo)
+
+    def test_prompt_still_formats_without_keyerror(self, repo):
+        """新增小节里若混入未转义的花括号，.format() 会炸。"""
+        p = self._prompt(repo)
+        assert repo.full_name in p
+        assert str(repo.stars) in p

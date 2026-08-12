@@ -74,6 +74,24 @@ class TestFullRun:
         assert record["rating"] == 5  # 9 被夹到 5
         assert record["difficulty"] == "medium"  # "MEDIUM-HIGH" 回退
 
+    def test_winner_has_complete_tldr(self, mock_settings):
+        s = run_once(mock_settings, report_date=REPORT_DATE)
+        t = s.winner.analysis.tldr
+        assert t.pain and t.solution and t.fit
+        assert len(t.pain) <= 60
+
+    def test_partial_tldr_candidate_falls_back(self, mock_settings):
+        """promptforge 的假数据只给了 pain —— solution 回退到 description，fit 留空而非报错。"""
+        from ai_analyzer import AIAnalyzer
+        from mock_data import MOCK_REPOS, MockLLMClient
+
+        repo = next(r for r in MOCK_REPOS if r.full_name == "edge-cases/promptforge")
+        analysis = AIAnalyzer(MockLLMClient()).analyze(repo)
+
+        assert analysis.tldr.pain == "同一个 prompt 三个版本散落各处，改坏了不知道是哪次改的"
+        assert analysis.tldr.solution == repo.description == "Prompt versioning and eval harness for teams."
+        assert analysis.tldr.fit == ""
+
 
 class TestDedup:
     def test_second_run_skips_pushed_winner(self, mock_settings):

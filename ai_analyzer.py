@@ -13,7 +13,7 @@ from typing import Any
 
 import requests
 
-from models import Analysis, AnalyzedProject, Repo, Scores
+from models import Analysis, AnalyzedProject, Repo, Scores, Tldr
 
 LOGGER = logging.getLogger(__name__)
 
@@ -44,7 +44,12 @@ USER_PROMPT_TEMPLATE = """请分析以下 GitHub 项目，并按指定 JSON 格�
 严格返回以下结构的 JSON（所有字段必填）：
 
 {{
-  "one_liner": "一句话核心价值，说清它解决什么痛点，40 字以内",
+  "one_liner": "一句人话总结，完整句子且带使用场景，30 字以内。见下方写法要求",
+  "tldr": {{
+    "pain": "不用它会怎样，具体场景，40 字以内",
+    "solution": "它具体干了什么，讲人话，40 字以内",
+    "fit": "部署事实：依赖 / 内存 / 要不要 Docker / 要不要显卡，40 字以内"
+  }},
   "highlights": ["核心技术亮点1", "核心技术亮点2", "核心技术亮点3"],
   "target_audience": "适用场景与目标群体描述，60 字以内",
   "difficulty": "low | medium | high 三选一",
@@ -64,6 +69,29 @@ USER_PROMPT_TEMPLATE = """请分析以下 GitHub 项目，并按指定 JSON 格�
 - problem_solving（解决问题能力）: 痛点明确性、方案可行性
 - popularity（受欢迎程度）: Star 数与近期增长趋势，结合项目年龄判断
 - nas_usability（NAS 可用性）: 是否提供 Docker 镜像/compose、资源占用是否适合家用 NAS（无独显、内存有限）
+
+## 一句话总结（one_liner）的写法
+
+**硬性要求：必须是完整句子，必须带使用场景，30 字以内。**
+读者读完这一句就要能复述"这东西是干嘛的"。
+
+反面示例（禁止这样写）：
+"多供应商AI水印移除工具，清理文本与文件元数据以保护隐私"
+这是名词短语堆叠 —— 读者读完仍不知道自己什么时候会用到它。
+
+正面示例：
+"AI 写的东西会被偷偷打上隐形标记 —— 这工具帮你洗干净"
+有场景、有动作、是完整句子。
+
+## 首屏三要素（tldr）的写法
+
+三句各 40 字以内，缺一不可：
+
+- pain —— 不用它会怎样。必须是具体场景，不许写抽象名词
+- solution —— 它具体干了什么。讲人话，不要罗列 API 名或依赖名
+- fit —— 部署事实。必须包含以下至少一项：语言与运行时依赖、
+  内存或存储占用、是否提供 Docker、是否需要显卡。
+  禁止写"适合自托管用户"这类没有信息量的话
 
 ## 详细介绍的写法
 
@@ -135,6 +163,13 @@ def build_degraded_analysis(repo: Repo, reason: str) -> Analysis:
             popularity=heuristic_popularity(repo.stars),
             nas_usability=50,
         ),
+        tldr=Tldr(
+            pain=repo.description.strip() or "该仓库未填写描述",
+            # solution 标签是"怎么解决"，塞仓库元数据答非所问；
+            # 同样的内容已在 highlights 与仓库信息表里，留空让模板隐藏该行。
+            solution="",
+            fit="AI 分析不可用，部署要求请查看仓库 README",
+        ),
         degraded=True,
         degrade_reason=reason,
     )
@@ -185,6 +220,48 @@ def _as_str(value: Any, default: str = "") -> str:
     return str(value).strip()
 
 
+TLDR_MAX_CHARS = 80
+
+
+def _truncate(text: str, limit: int = TLDR_MAX_CHARS) -> str:
+    """超长首屏文案硬截断。
+
+    Prompt 要求 40 字，这里放宽到 80 —— 不是对文风的第二意见，
+    只是防止某一次话痨输出把整个首屏撑爆。
+    """
+    if len(text) <= limit:
+        return text
+    return text[:limit] + "…"
+
+
+def normalize_tldr(payload: dict[str, Any], repo: Repo) -> Tldr:
+    """解析首屏三要素，逐字段兜底。
+
+    模型漏一个字段不该毁掉整页，所以这里不整体降级。
+    solution 只在 pain 没有消耗掉 description 时才回退到它 ——
+    否则首屏会把同一句话印两遍。
+    三个字段最终都会被截断到 TLDR_MAX_CHARS。
+    """
+    raw = payload.get("tldr")
+    if not isinstance(raw, dict):
+        raw = {}
+
+    description = repo.description.strip()
+
+    pain = _as_str(raw.get("pain")) or description
+    used_description_for_pain = bool(description) and pain == description
+
+    solution = _as_str(raw.get("solution"))
+    if not solution and not used_description_for_pain:
+        solution = description
+
+    fit = _as_str(raw.get("fit"))
+    if not fit and any(t.lower() == "docker" for t in repo.topics):
+        fit = "仓库标注了 Docker 支持"
+
+    return Tldr(pain=_truncate(pain), solution=_truncate(solution), fit=_truncate(fit))
+
+
 def normalize_analysis(payload: dict[str, Any], repo: Repo) -> Analysis:
     """把 LLM 的 JSON 规整成 Analysis，越界值一律夹紧而不是报错。"""
     raw_highlights = payload.get("highlights")
@@ -221,6 +298,7 @@ def normalize_analysis(payload: dict[str, Any], repo: Repo) -> Analysis:
         rating_reason=_as_str(payload.get("rating_reason")),
         detailed_intro=_as_str(payload.get("detailed_intro")) or _as_str(payload.get("one_liner")),
         scores=scores,
+        tldr=normalize_tldr(payload, repo),
         raw_json=json.dumps(payload, ensure_ascii=False, indent=2),
     )
 

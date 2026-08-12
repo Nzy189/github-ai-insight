@@ -21,8 +21,11 @@ from models import AnalyzedProject
 LOGGER = logging.getLogger(__name__)
 
 TEMPLATE_DIR = Path(__file__).parent / "templates"
-RING_RADIUS = 34
-RING_CIRCUMFERENCE = round(2 * math.pi * RING_RADIUS, 2)
+# 评分环由 80px 缩至 52px 并入判断条（见 2026-08-12 报告 IA 改造 spec）
+RING_BOX = 52
+RING_STROKE = 4
+RING_RADIUS = (RING_BOX - RING_STROKE) // 2  # = 24
+RING_CIRCUMFERENCE = round(2 * math.pi * RING_RADIUS, 2)  # = 150.8
 
 DIFFICULTY_LABELS = {"low": "入门友好", "medium": "需要折腾", "high": "硬核"}
 DIFFICULTY_CLASSES = {
@@ -47,16 +50,25 @@ def score_tier(score: float) -> str:
     return "low"
 
 
+# 不能用 "extra" 合集：它捆绑了 attr_list，其 `{: ... }` 语法能给生成的标签
+# 塞任意属性（如 onmouseover / onclick），而 html.escape 只处理 <>& —— 花括号
+# 原样通过，转义拦不住它。detailed_intro 来自第三方 README 派生的模型文本，
+# 一旦 attr_list 生效，被投毒的 README 就能在报告页上执行脚本。
+# 因此这里显式列出所需扩展，永远不要换回 "extra"。
+MARKDOWN_EXTENSIONS = ["fenced_code", "tables", "def_list", "abbr", "sane_lists", "nl2br"]
+
+
 def render_markdown(text: str) -> str:
     """把 LLM 生成的 Markdown 转成 HTML。
 
     先做 HTML 转义再渲染 Markdown：LLM 输出属于不可信内容，
     不允许它往自包含报告里注入原始 HTML/脚本。
+    扩展白名单排除了 attr_list（见 MARKDOWN_EXTENSIONS 注释）。
     """
     if not text or not text.strip():
         return ""
     escaped = html.escape(text, quote=False)
-    return md.markdown(escaped, extensions=["extra", "sane_lists", "nl2br"])
+    return md.markdown(escaped, extensions=MARKDOWN_EXTENSIONS)
 
 
 def _format_date(value: str) -> str:
@@ -111,6 +123,16 @@ class ReportGenerator:
         ring_start, ring_end = RING_GRADIENTS[score_tier(total)]
         ring_offset = round(RING_CIRCUMFERENCE * (1 - min(max(total, 0), 100) / 100), 2)
 
+        tldr_rows = [
+            {"label": label, "text": text}
+            for label, text in (
+                ("痛点", analysis.tldr.pain),
+                ("怎么解决", analysis.tldr.solution),
+                ("我能用吗", analysis.tldr.fit),
+            )
+            if text
+        ]
+
         return {
             "repo": repo,
             "analysis": analysis,
@@ -121,6 +143,11 @@ class ReportGenerator:
             "ring_offset": ring_offset,
             "ring_start": ring_start,
             "ring_end": ring_end,
+            "tldr_rows": tldr_rows,
+            "ring_box": RING_BOX,
+            "ring_center": RING_BOX // 2,
+            "ring_radius": RING_RADIUS,
+            "ring_stroke": RING_STROKE,
             "difficulty_label": DIFFICULTY_LABELS.get(analysis.difficulty, analysis.difficulty),
             "difficulty_class": DIFFICULTY_CLASSES.get(
                 analysis.difficulty, "badge-difficulty-mid"
