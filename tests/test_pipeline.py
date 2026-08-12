@@ -74,6 +74,19 @@ class TestFullRun:
         assert record["rating"] == 5  # 9 被夹到 5
         assert record["difficulty"] == "medium"  # "MEDIUM-HIGH" 回退
 
+    def test_winner_has_complete_tldr(self, mock_settings):
+        s = run_once(mock_settings, report_date=REPORT_DATE)
+        t = s.winner.analysis.tldr
+        assert t.pain and t.solution and t.fit
+        assert len(t.pain) <= 60
+
+    def test_partial_tldr_candidate_falls_back(self, mock_settings):
+        """promptforge 的假数据只给了 pain —— fit 应留空而非报错。"""
+        run_once(mock_settings, report_date=REPORT_DATE)
+        db = Database(mock_settings.db_path)
+        rows = {r["repo_name"]: r for r in db.recent(10)}
+        assert "edge-cases/promptforge" in rows
+
 
 class TestDedup:
     def test_second_run_skips_pushed_winner(self, mock_settings):

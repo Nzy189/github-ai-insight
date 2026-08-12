@@ -255,3 +255,39 @@ class TestDegradedTldr:
     def test_degraded_pain_handles_empty_description(self):
         r = Repo(full_name="a/b", html_url="u", description="")
         assert build_degraded_analysis(r, "x").tldr.pain == "该仓库未填写描述"
+
+
+class TestPromptHardConstraints:
+    def _prompt(self, repo):
+        return AIAnalyzer(None).build_prompt(repo)
+
+    def test_declares_tldr_in_json_schema(self, repo):
+        p = self._prompt(repo)
+        assert '"tldr"' in p
+        assert '"pain"' in p
+        assert '"solution"' in p
+        assert '"fit"' in p
+
+    def test_has_one_liner_writing_section(self, repo):
+        assert "一句话总结（one_liner）的写法" in self._prompt(repo)
+
+    def test_has_tldr_writing_section(self, repo):
+        assert "首屏三要素（tldr）的写法" in self._prompt(repo)
+
+    def test_shows_negative_example_verbatim(self, repo):
+        """反面示例必须原样给出 —— 抽象地说'不要名词堆叠'模型听不懂。"""
+        p = self._prompt(repo)
+        assert "多供应商AI水印移除工具" in p
+        assert "名词短语堆叠" in p
+
+    def test_shows_positive_example(self, repo):
+        assert "AI 写的东西会被偷偷打上隐形标记" in self._prompt(repo)
+
+    def test_forbids_empty_fit_phrasing(self, repo):
+        assert "适合自托管用户" in self._prompt(repo)
+
+    def test_prompt_still_formats_without_keyerror(self, repo):
+        """新增小节里若混入未转义的花括号，.format() 会炸。"""
+        p = self._prompt(repo)
+        assert repo.full_name in p
+        assert str(repo.stars) in p
