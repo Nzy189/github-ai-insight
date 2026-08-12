@@ -82,8 +82,8 @@
 
 | 层级 | Font Size | Weight | Line Height | Letter Spacing | 使用场景 |
 |------|-----------|--------|-------------|----------------|----------|
-| Display | 36px / 2.25rem | 700 | 1.2 | -0.02em | 报告页 Hero 标题 |
-| H1 | 28px / 1.75rem | 600 | 1.25 | -0.015em | 页面主标题 |
+| Hero Title | 26px / 1.625rem | 700 | 1.35 | -0.01em | 报告页 Hero 一句话价值（内容是句子，不是项目名） |
+| H1 | 28px / 1.75rem | 600 | 1.25 | -0.015em | 页面主标题（报告页不使用） |
 | H2 | 22px / 1.375rem | 600 | 1.3 | -0.01em | 区块标题 |
 | H3 | 18px / 1.125rem | 600 | 1.4 | -0.005em | 卡片标题、项目名称 |
 | Body Large | 16px / 1rem | 400 | 1.6 | 0 | 报告正文、详细介绍 |
@@ -91,6 +91,10 @@
 | Body Mono | 14px / 0.875rem | 400 | 1.5 | 0 | 仓库名、路径 |
 | Caption | 12px / 0.75rem | 400 | 1.5 | 0.01em | 时间戳、辅助信息 |
 | Nano | 11px / 0.6875rem | 500 | 1.4 | 0.02em | 标签、Badge 文字 |
+
+> **2026-08-12 修订**：报告页 Hero 标题不再是项目名，而是一句话价值。
+> 36px 的 Display 放长句在 375px 屏上会占掉近半屏，故新增 Hero Title 层级，
+> 移动端降至 21px。所有字号一律不得低于 Nano 的 11px。
 
 ---
 
@@ -214,18 +218,51 @@
 
 ```css
 .score-ring {
-  width: 80px;
-  height: 80px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 24px;
+  width: 52px;          /* 2026-08-12 修订：由 80px 缩小并入判断条 */
+  height: 52px;
+  flex: 0 0 52px;
+  position: relative;
+}
+.score-ring .value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 17px;
   font-weight: 700;
   color: #FAFAFA;
-  /* 动态背景由 SVG conic-gradient 实现 */
 }
 ```
+
+### TL;DR 三要素卡（Hero）
+
+```css
+.tldr-row {
+  display: flex;
+  gap: 12px;
+  padding: 13px 0;
+  border-bottom: 1px solid #1E1E21;
+}
+.tldr-label {
+  flex: 0 0 60px;       /* 移动端 52px */
+  font-size: 11px;      /* Nano 下限，不得再小 */
+  font-weight: 600;
+  color: #3B82F6;
+}
+.tldr-text { font-size: 14px; line-height: 1.55; color: #FAFAFA; }
+```
+
+三行分别回答「痛点 / 怎么解决 / 我能用吗」。任一行内容为空时**整行不渲染**，
+不留空壳。
+
+### 评分细条（替代原 2×2 评分卡片网格）
+
+```css
+.score-line { display: flex; align-items: center; gap: 12px; padding: 9px 0; }
+.score-line-label { flex: 0 0 108px; font-size: 13px; }  /* 移动端 92px */
+.score-line-bar { flex: 1 1 auto; height: 6px; border-radius: 3px; background: #27272A; }
+.score-line-value { flex: 0 0 30px; text-align: right; font-family: monospace; }
+```
+
+评分在新结构中是**佐证而非主角**——总分与结论已在 Hero 交代完毕，
+此区块只回答"这个分怎么算出来的"，因此不再占用整屏。
 
 ### Markdown Content Area（报告正文区）
 
@@ -394,7 +431,13 @@
 
 ### Quick Reference
 
-> 暗色主题开发者仪表盘风格。背景 `#0A0A0B`，卡片 `#111113`，边框 `#27272A`。无衬线字体 `Inter` + 等宽 `JetBrains Mono`。评分使用绿/黄/红渐变进度条。卡片圆角 `12px`，阴影柔和。单列布局，移动端优先。所有 HTML 自包含，无外部依赖。
+> 暗色主题开发者仪表盘风格。背景 `#0A0A0B`，卡片 `#111113`，边框 `#27272A`。
+> 无衬线 `Inter` + 等宽 `JetBrains Mono`。**报告页 Hero 的大标题是一句话价值
+> 而非项目名**（桌面 26px / 移动 21px / 700），下接「痛点 / 怎么解决 / 我能用吗」
+> 三行标签卡，再接评分环 52px 的判断条。首屏以下顺序固定为
+> 技术亮点 → 详细介绍 → 评分依据 → 仓库信息。评分用四行横向细条而非卡片网格。
+> 卡片圆角 `12px`。单列布局，移动端优先，字号不低于 11px。
+> 所有 HTML 自包含，无外部依赖，无 JS。
 
 ### Component Prompts
 
