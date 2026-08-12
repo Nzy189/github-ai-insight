@@ -236,8 +236,12 @@ class MockGitHubClient:
         LOGGER.info("[MOCK] 返回 %d 个假仓库（近 %d 天）", min(limit, len(self.repos)), days)
         return sorted(self.repos, key=lambda r: r.stars, reverse=True)[:limit]
 
-    def repo_exists(self, full_name: str) -> bool:
-        return any(r.full_name == full_name for r in self.repos)
+    def repo_exists(self, full_name: str) -> bool:  # noqa: ARG002
+        """mock 模拟的是一个正常的 GitHub —— 仓库一律视为存在。
+
+        要测"仓库已被删除"的分支，在测试里 monkeypatch 掉这个方法。
+        """
+        return True
 
     def fetch_readme(self, full_name: str, *, max_chars: int = 24_000) -> str:
         for repo in self.repos:

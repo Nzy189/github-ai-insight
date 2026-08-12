@@ -184,16 +184,23 @@ class TestPipelineFallback:
         assert db.backlog_size() == 4
 
     def test_backlog_used_when_no_candidates_at_all(self, mock_settings):
-        """去重后一个候选都没有时，也该去候补池捞 —— 而不是直接静默跳过。"""
+        """去重后一个候选都没有时，也该去候补池捞 —— 而不是直接静默跳过。
+
+        mock 只有 5 个仓库，跑满 5 轮后候选和候补池会同时清空
+        （同一批仓库既是候选也是候补），所以先耗尽、再塞一条候补进去。
+        """
         for _ in range(5):
             run_once(mock_settings, report_date=REPORT_DATE)
         db = Database(mock_settings.db_path)
-        assert db.best_backlog() is not None
+        assert db.best_backlog() is None, "5 轮之后候选与候补池应同时清空"
+
+        self._seed(mock_settings, "history/leftover", 66.0)
 
         s = run_once(mock_settings, report_date=REPORT_DATE)
         assert s.candidates == 0
         assert s.from_backlog is True
-        assert s.winner is not None
+        assert s.winner.repo.full_name == "history/leftover"
+        assert s.pushed is True
 
     def test_silent_only_when_both_empty(self, mock_settings):
         """候选和候补池都空了才回到静默跳过。"""

@@ -31,11 +31,26 @@ docker compose up -d
 
 ```
 GitHub Search API  →  SQLite 去重  →  LLM 分析打分  →  选出最高分  →  HTML + 企微 + 归档
-   topic:ai/llm       full_name         结构化 JSON       加权总分
+   topic:ai/llm       full_name         结构化 JSON      今日候选 ∪ 候补池
    近 3 天 Top 5      已推送则跳过      四维评分
 ```
 
 **评分权重**：实用性 35% · 解决问题 30% · 受欢迎程度 25% · NAS 可用性 10%
+
+### 候补池
+
+每天分析 5 个只推 1 个，落选的 4 个过了 GitHub「近 3 天」的搜索窗口就再也不会出现在
+候选里 —— 但它们的完整分析结果留在了库里。**选题时取「今日候选 ∪ 候补池」的全局最高分**：
+
+```
+第 1 天  85 / 84 / 83  →  推 85，84 和 83 进候补池
+第 5 天  72 / 28 / 79  →  今天最高 79 打不过候补池里的 84  →  推 84
+```
+
+推过的项目立刻出池，候补池按分数从高到低自然排空。取用候补项目**不重新调用 LLM**
+（分析结果现成），只花一次 GitHub 请求确认仓库还在，报告页顶部会标注「往期精选」。
+
+今日候选为空时也会先看候补池，两边都空才回到「空结果策略」。
 
 ---
 
@@ -88,7 +103,7 @@ python main.py --now --model claude-sonnet-4-5 --candidates 10 --days 7
 
 ```
 ├── config.py              配置加载与校验（pydantic-settings）
-├── models.py              领域模型：Repo / Analysis / Scores / AnalyzedProject
+├── models.py              领域模型：Repo / Analysis / Scores / Tldr / AnalyzedProject
 ├── db.py                  SQLite 建表、去重、UPSERT
 ├── github_client.py       Search API + README + 速率限制感知
 ├── ai_analyzer.py         LLM 调用 + JSON 解析 + 打分 + 降级
@@ -99,7 +114,7 @@ python main.py --now --model claude-sonnet-4-5 --candidates 10 --days 7
 ├── mock_data.py           本地测试假数据与假客户端
 ├── templates/
 │   └── report.html.j2     自包含暗色报告模板
-├── tests/                 150 个单元与端到端测试
+├── tests/                 232 个单元与端到端测试
 ├── scripts/               本地一键验证脚本
 ├── Dockerfile
 ├── docker-entrypoint.sh   PUID/PGID 降权（NAS 权限适配）
@@ -110,9 +125,11 @@ python main.py --now --model claude-sonnet-4-5 --candidates 10 --days 7
 
 ```
 data/
-├── github_ai_insight.db
+├── github_ai_insight.db          # WAL 模式；候补池的权威副本
 ├── reports/YYYY-MM-DD-{owner}_{repo}.html
-└── archive/YYYY-MM/YYYY-MM-DD-{owner}_{repo}.md
+└── archive/
+    ├── YYYY-MM/…md               # 推送过的项目
+    └── backlog/YYYY-MM/…md       # 落选项目（候补池的文本副本）
 ```
 
 ---
@@ -130,7 +147,9 @@ data/
 | GitHub Token 无效 | 自动降级为匿名请求继续 |
 | 企微推送失败 | 重试 3 次（间隔 10s）；报告与归档照常生成 |
 | 企微未配置 | 跳过推送，项目标记 `skipped`，配好后仍会推送 |
-| 去重后无候选 | 静默跳过；`NOTIFY_EMPTY=true` 时推送"今日无新发现" |
+| 当日新项目分数都不高 | 从候补池取历史最高分项目顶上（不重新调 LLM） |
+| 候补项目的仓库已删除 | 跳过它，回落到当日胜出者 |
+| 去重后无候选 | 先看候补池；两边都空才静默跳过（`NOTIFY_EMPTY=true` 时推送"今日无新发现"） |
 
 降级产生的报告页顶部会显示橙色虚线警告横幅。
 
@@ -158,3 +177,16 @@ data/
 2. `REPORT_BASE_URL` 改成局域网地址，否则企微里的链接在手机上打不开
 3. `TZ` 与 `TIMEZONE` 保持一致
 4. 健康检查探测 SQLite 可连接性，`docker compose ps` 显示 `healthy` 即正常
+
+### SQLite 在 NAS 上的三条注意
+
+1. **`DATA_DIR` 必须是 NAS 本地路径，不能指向 SMB / NFS 挂载点。**
+   数据库以 WAL 模式运行（NAS 断电时的恢复能力远好于默认 journal），
+   而 WAL 在网络文件系统上不工作。启动日志里如果出现
+   `无法启用 WAL` 的告警，说明路径落在了网络挂载上。
+2. **别在容器运行时用 GUI 工具从电脑打开这个 `.db` 文件。**
+   SQLite 在 SMB 上的文件锁是坏的，边写边开有损坏风险。
+   要看数据用 `python main.py --list`，或先 `docker compose stop`。
+3. **这个库是候补池的权威副本，值得纳入备份。**
+   落选项目只存在于数据库里（`archive/backlog/` 下有文本副本可供人工恢复，
+   但没有自动导入功能）。丢了库 = 丢了整个候补池。
