@@ -265,6 +265,15 @@ class TestHeroB2:
         assert project.analysis.rating_reason in html
         assert "入门友好" in html or "需要折腾" in html or "硬核" in html
 
+    def test_hero_verdict_reason_has_its_own_singly_defined_class(self, generator, project):
+        """回归测试：Hero 的 .verdict-reason 曾与快速上手区块同名选择器撞车，
+        后者在样式表里位置更靠后，按级联规则会覆盖 Hero 自己的 13px/次要色样式。
+        Hero 必须使用专属类名 hero-verdict-reason，且该选择器只能定义一次。
+        """
+        html = self._html(generator, project)
+        assert 'class="hero-verdict-reason"' in html
+        assert html.count(".hero-verdict-reason") == 1
+
     def test_ring_geometry_matches_52px(self, generator, project):
         html = self._html(generator, project)
         assert 'viewBox="0 0 52 52"' in html

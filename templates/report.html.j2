@@ -201,7 +201,7 @@ body {
 }
 .verdict-stars { color: var(--color-warning); letter-spacing: 1px; font-size: 14px; }
 .verdict-stars .off { color: var(--color-text-tertiary); }
-.verdict-reason {
+.hero-verdict-reason {
   margin: 0;
   font-size: 13px;
   line-height: 1.55;
@@ -596,7 +596,7 @@ footer a:hover { color: var(--color-accent-hover); }
           <span class="badge {{ difficulty_class }}">{{ difficulty_label }}</span>
         </div>
         {% if analysis.rating_reason %}
-        <p class="verdict-reason">{{ analysis.rating_reason }}</p>
+        <p class="hero-verdict-reason">{{ analysis.rating_reason }}</p>
         {% endif %}
       </div>
     </div>
