@@ -229,50 +229,61 @@ section { margin-bottom: 48px; }
   box-shadow: var(--shadow-md);
 }
 
-.score-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 16px;
-}
-.score-card {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-  padding: 20px;
-  box-shadow: var(--shadow-md);
-}
-.score-card-head {
+/* ---------------------------------------------------------- 评分细条 */
+.score-line {
   display: flex;
-  align-items: baseline;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 0;
+}
+.score-line + .score-line { border-top: 1px solid var(--color-border-subtle); }
+.score-line-label {
+  flex: 0 0 108px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  display: flex;
   justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 12px;
+  gap: 6px;
 }
-.score-card-label { font-size: 14px; color: var(--color-text-secondary); }
-.score-card-weight {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--color-text-tertiary);
-}
-.score-card-value {
-  font-family: var(--font-mono);
-  font-size: 28px;
-  font-weight: 700;
-  line-height: 1;
-  color: var(--color-text-primary);
-  margin-bottom: 12px;
-}
-.score-bar {
+.score-line-label .w { font-family: var(--font-mono); font-size: 11px; color: var(--color-text-tertiary); }
+.score-line-bar {
+  flex: 1 1 auto;
   height: 6px;
   border-radius: 3px;
   background: var(--color-border);
   overflow: hidden;
 }
-.score-bar-fill {
+.score-line-fill {
+  display: block;
   height: 100%;
   border-radius: 3px;
   transition: width 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
+.score-line-value {
+  flex: 0 0 30px;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+.score-note {
+  margin: 14px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-border-subtle);
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+}
+.score-note strong { font-family: var(--font-mono); color: var(--color-text-secondary); }
+.audience-note {
+  margin: 16px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--color-border-subtle);
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--color-text-body);
+}
+.audience-note strong { color: var(--color-text-primary); }
 .score-high { background: linear-gradient(90deg, #22C55E, #4ADE80); }
 .score-mid  { background: linear-gradient(90deg, #F59E0B, #FBBF24); }
 .score-low  { background: linear-gradient(90deg, #EF4444, #F87171); }
@@ -377,34 +388,6 @@ section { margin-bottom: 48px; }
   color: var(--color-text-secondary);
 }
 
-/* ---------------------------------------------------------- 快速上手 */
-.verdict-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 16px;
-  margin-bottom: 20px;
-}
-.verdict-item {
-  background: var(--color-surface-elevated);
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  padding: 16px;
-}
-.verdict-item .k {
-  font-size: 12px;
-  letter-spacing: 0.01em;
-  color: var(--color-text-secondary);
-  margin-bottom: 6px;
-}
-.verdict-item .v {
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--color-text-primary);
-}
-.stars { letter-spacing: 2px; color: var(--color-warning); }
-.stars .off { color: var(--color-text-tertiary); }
-.verdict-reason { font-size: 15px; line-height: 1.6; color: var(--color-text-body); margin: 0; }
-
 /* ---------------------------------------------------------- 元数据表 */
 .meta-table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .meta-table tr { border-bottom: 1px solid var(--color-border-subtle); }
@@ -426,7 +409,6 @@ section { margin-bottom: 48px; }
 }
 
 /* ---------------------------------------------------------- CTA + Footer */
-.cta-row { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 48px; }
 .btn-primary {
   display: inline-flex;
   align-items: center;
@@ -443,26 +425,6 @@ section { margin-bottom: 48px; }
   transition: background 0.15s ease;
 }
 .btn-primary:hover { background: #2563EB; }
-.btn-ghost {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 44px;
-  background: transparent;
-  color: var(--color-text-secondary);
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  padding: 10px 20px;
-  font-size: 14px;
-  font-weight: 500;
-  text-decoration: none;
-  transition: all 0.15s ease;
-}
-.btn-ghost:hover {
-  background: var(--color-surface-elevated);
-  color: var(--color-text-primary);
-  border-color: #3F3F46;
-}
 
 footer {
   border-top: 1px solid var(--color-border-subtle);
@@ -485,10 +447,8 @@ footer a:hover { color: var(--color-accent-hover); }
   .tldr-label { flex: 0 0 52px; }
   .tldr-text { font-size: 13px; }
   .section-title { font-size: 18px; }
-  .score-grid { grid-template-columns: 1fr; }
-  .verdict-grid { grid-template-columns: 1fr; }
+  .score-line-label { flex: 0 0 92px; font-size: 12px; }
   .prose { font-size: 15px; }
-  .cta-row .btn-primary, .cta-row .btn-ghost { flex: 1 1 100%; }
   .meta-table th { width: 40%; }
 }
 
@@ -514,8 +474,7 @@ footer a:hover { color: var(--color-accent-hover); }
     --color-border-subtle: #E4E4E7;
   }
   body { background: #FFFFFF; color: #18181B; }
-  .card, .score-card, .verdict-item { box-shadow: none; }
-  .cta-row { display: none; }
+  .card { box-shadow: none; }
   section { break-inside: avoid; margin-bottom: 24px; }
   a { color: #1D4ED8 !important; }
 }
@@ -605,57 +564,26 @@ footer a:hover { color: var(--color-accent-hover); }
        target="_blank" rel="noopener noreferrer">前往 GitHub 仓库 ↗</a>
   </div>
 
-  <!-- ============ 四维评分 ============ -->
-  <section aria-labelledby="sec-scores">
-    <h2 class="section-title" id="sec-scores">评分详情</h2>
-    <div class="score-grid">
-      {% for dim in dimensions %}
-      <div class="score-card">
-        <div class="score-card-head">
-          <span class="score-card-label">{{ dim.label }}</span>
-          <span class="score-card-weight">{{ dim.weight }}</span>
-        </div>
-        <div class="score-card-value">{{ dim.score }}</div>
-        <div class="score-bar" role="img" aria-label="{{ dim.label }} {{ dim.score }} 分">
-          <div class="score-bar-fill {{ dim.css_class }}" style="width: {{ dim.score }}%"></div>
-        </div>
-      </div>
-      {% endfor %}
-    </div>
-  </section>
-
-  <!-- ============ 快速判断 ============ -->
-  <section aria-labelledby="sec-verdict">
-    <h2 class="section-title" id="sec-verdict">快速上手</h2>
+  <!-- ============ 技术亮点 ============ -->
+  {% if analysis.highlights or analysis.target_audience %}
+  <section aria-labelledby="sec-highlights">
+    <h2 class="section-title" id="sec-highlights">技术亮点</h2>
     <div class="card">
-      <div class="verdict-grid">
-        <div class="verdict-item">
-          <div class="k">推荐指数</div>
-          <div class="v stars">
-            {%- for _ in range(analysis.rating) %}★{% endfor -%}
-            {%- for _ in range(5 - analysis.rating) %}<span class="off">★</span>{% endfor -%}
-            &nbsp;<span style="font-family: var(--font-mono); font-size: 14px; color: var(--color-text-secondary);">{{ analysis.rating }}/5</span>
-          </div>
-        </div>
-        <div class="verdict-item">
-          <div class="k">上手难度</div>
-          <div class="v">
-            <span class="badge {{ difficulty_class }}" style="font-size: 13px; padding: 4px 12px;">
-              {{ difficulty_label }}
-            </span>
-          </div>
-        </div>
-      </div>
-      {% if analysis.rating_reason %}
-      <p class="verdict-reason">{{ analysis.rating_reason }}</p>
+      {% if analysis.highlights %}
+      <ul class="highlight-list">
+        {% for item in analysis.highlights %}
+        <li>{{ item }}</li>
+        {% endfor %}
+      </ul>
       {% endif %}
       {% if analysis.target_audience %}
-      <p class="verdict-reason" style="margin-top: 12px;">
-        <strong style="color: var(--color-text-primary);">适合谁：</strong>{{ analysis.target_audience }}
+      <p class="audience-note">
+        <strong>适合谁：</strong>{{ analysis.target_audience }}
       </p>
       {% endif %}
     </div>
   </section>
+  {% endif %}
 
   <!-- ============ 详细介绍 ============ -->
   {% if intro_html %}
@@ -667,19 +595,22 @@ footer a:hover { color: var(--color-accent-hover); }
   </section>
   {% endif %}
 
-  <!-- ============ 技术亮点 ============ -->
-  {% if analysis.highlights %}
-  <section aria-labelledby="sec-highlights">
-    <h2 class="section-title" id="sec-highlights">技术亮点</h2>
+  <!-- ============ 评分依据 ============ -->
+  <section aria-labelledby="sec-scores">
+    <h2 class="section-title" id="sec-scores">评分依据</h2>
     <div class="card">
-      <ul class="highlight-list">
-        {% for item in analysis.highlights %}
-        <li>{{ item }}</li>
-        {% endfor %}
-      </ul>
+      {% for dim in dimensions %}
+      <div class="score-line">
+        <span class="score-line-label">{{ dim.label }}<span class="w">{{ dim.weight }}</span></span>
+        <span class="score-line-bar" role="img" aria-label="{{ dim.label }} {{ dim.score }} 分">
+          <span class="score-line-fill {{ dim.css_class }}" style="width: {{ dim.score }}%"></span>
+        </span>
+        <span class="score-line-value">{{ dim.score }}</span>
+      </div>
+      {% endfor %}
+      <p class="score-note">总分 = 各维度得分 × 权重之和 = <strong>{{ total_score }}</strong> / 100</p>
     </div>
   </section>
-  {% endif %}
 
   <!-- ============ 仓库信息 ============ -->
   <section aria-labelledby="sec-meta">
@@ -707,12 +638,6 @@ footer a:hover { color: var(--color-accent-hover); }
       </table>
     </div>
   </section>
-
-  <!-- ============ CTA ============ -->
-  <div class="cta-row">
-    <a class="btn-primary" href="{{ repo.html_url }}" target="_blank" rel="noopener noreferrer">前往 GitHub 仓库 ↗</a>
-    <a class="btn-ghost" href="{{ repo.html_url }}/stargazers" target="_blank" rel="noopener noreferrer">查看 Star 趋势</a>
-  </div>
 
   <footer>
     <p>由 <strong style="color: var(--color-text-secondary);">GitHub AI Insight</strong> 自动生成 · {{ generated_at }}</p>

@@ -290,3 +290,62 @@ class TestHeroB2:
         html = self._html(generator, project)
         assert "font-size: 9px" not in html
         assert "font-size: 10px" not in html
+
+
+class TestSectionOrder:
+    SECTIONS = ["技术亮点", "详细介绍", "评分依据", "仓库信息"]
+
+    def test_sections_appear_in_reading_order(self, generator, project):
+        html = generator.render_html(project, REPORT_DATE)
+        positions = [html.index(f'id="sec-{k}"') for k in
+                     ("highlights", "intro", "scores", "meta")]
+        assert positions == sorted(positions), "区块顺序必须是 亮点→正文→评分→仓库"
+
+    def test_score_section_titled_评分依据(self, generator, project):
+        html = generator.render_html(project, REPORT_DATE)
+        assert "评分依据" in html
+        assert "评分详情" not in html
+
+    def test_scores_use_compact_rows_not_grid(self, generator, project):
+        html = generator.render_html(project, REPORT_DATE)
+        assert html.count('class="score-line"') == 4
+        assert "score-grid" not in html
+        assert "score-card" not in html
+
+    def test_score_lines_carry_weight_and_value(self, generator, project):
+        html = generator.render_html(project, REPORT_DATE)
+        for token in ("35%", "30%", "25%", "10%"):
+            assert token in html
+        assert "width: 90%" in html  # utility=90 in the fixture
+
+    def test_target_audience_moved_into_highlights(self, generator, project):
+        html = generator.render_html(project, REPORT_DATE)
+        highlights_block = html.split('id="sec-highlights"')[1].split('id="sec-intro"')[0]
+        assert project.analysis.target_audience in highlights_block
+
+    def test_old_quickstart_section_removed(self, generator, project):
+        html = generator.render_html(project, REPORT_DATE)
+        assert "快速上手" not in html
+        assert "verdict-grid" not in html
+
+    def test_duplicate_cta_removed(self, generator, project):
+        """CTA 已进 Hero，底部不再重复。"""
+        html = generator.render_html(project, REPORT_DATE)
+        assert html.count("前往 GitHub 仓库 ↗") == 1
+
+    def test_no_dead_css_left_behind(self, generator, project):
+        """失效选择器必须删干净 —— 旧 .verdict-reason 位置靠后会覆盖 Hero 的新定义。"""
+        html = generator.render_html(project, REPORT_DATE)
+        for selector in (".verdict-grid", ".verdict-item", ".cta-row",
+                         ".btn-ghost", ".score-bar", ".score-card"):
+            assert selector not in html, f"残留失效 CSS: {selector}"
+
+    def test_old_verdict_reason_selector_fully_gone(self, generator, project):
+        """Task 3 已把 Hero 的同名规则重命名为 .hero-verdict-reason，
+        因此删掉旧的 15px 规则后，.verdict-reason 应当一个都不剩。
+        注意 '.hero-verdict-reason' 不含 '.verdict-reason' 子串（点后面接的是 h），
+        所以这条断言不会被 Hero 的新类名意外满足。"""
+        html = generator.render_html(project, REPORT_DATE)
+        assert ".verdict-reason" not in html
+        assert html.count(".hero-verdict-reason") == 1
+        assert 'class="hero-verdict-reason"' in html
