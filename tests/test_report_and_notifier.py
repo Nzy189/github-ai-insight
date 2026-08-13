@@ -428,3 +428,31 @@ class TestSectionOrder:
         assert ".verdict-reason" not in html
         assert html.count(".hero-verdict-reason") == 1
         assert 'class="hero-verdict-reason"' in html
+
+
+class TestArchiveLink:
+    """报告页回归档首页的入口 —— 从企微点开报告后能跳到往期全部推送。"""
+
+    def test_link_present_and_derived_from_base_url(self, generator, project):
+        html = generator.render_html(project, REPORT_DATE)
+        assert "查看往期全部推送" in html
+        assert 'href="http://nas.local:8080/"' in html
+
+    def test_absent_when_no_base_url(self, tmp_path, project):
+        gen = ReportGenerator(tmp_path / "r", tmp_path / "a", report_base_url="", model_name="m")
+        html = gen.render_html(project, REPORT_DATE)
+        assert "查看往期全部推送" not in html
+
+    def test_uses_absolute_url_not_root_relative(self, generator, project):
+        """报告可能被下载后用 file:// 打开，相对的 "/" 会指向文件系统根。"""
+        html = generator.render_html(project, REPORT_DATE)
+        assert 'class="archive-link" href="/"' not in html
+
+    @pytest.mark.parametrize("base,expected", [
+        ("http://n:8080/reports", "http://n:8080/"),
+        ("http://n:8080/reports/", "http://n:8080/"),
+        ("http://n:8080/x", "http://n:8080/x/"),
+    ])
+    def test_index_url_derivation(self, tmp_path, base, expected):
+        gen = ReportGenerator(tmp_path / "r", tmp_path / "a", report_base_url=base, model_name="m")
+        assert gen.archive_index_url == expected

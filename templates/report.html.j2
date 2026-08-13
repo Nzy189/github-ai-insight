@@ -450,6 +450,27 @@ section { margin-bottom: 48px; }
 }
 .btn-primary:hover { background: #2563EB; }
 
+.archive-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  margin-bottom: 32px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: all 0.15s ease;
+}
+.archive-link:hover {
+  background: var(--color-surface-elevated);
+  color: var(--color-text-primary);
+  border-color: #3F3F46;
+}
+
 footer {
   border-top: 1px solid var(--color-border-subtle);
   padding-top: 24px;
@@ -672,6 +693,10 @@ footer a:hover { color: var(--color-accent-hover); }
       </table>
     </div>
   </section>
+
+  {% if archive_url %}
+  <a class="archive-link" href="{{ archive_url }}">📚 查看往期全部推送</a>
+  {% endif %}
 
   <footer>
     <p>由 <strong style="color: var(--color-text-secondary);">GitHub AI Insight</strong> 自动生成 · {{ generated_at }}</p>

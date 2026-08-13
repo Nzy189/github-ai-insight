@@ -465,8 +465,19 @@ class AIAnalyzer:
         )
         return analysis
 
+    @property
+    def model_name(self) -> str:
+        return getattr(self.client, "model", "") if self.client else ""
+
     def analyze_all(self, repos: list[Repo]) -> list[AnalyzedProject]:
-        return [AnalyzedProject(repo=repo, analysis=self.analyze(repo)) for repo in repos]
+        return [
+            AnalyzedProject(
+                repo=repo,
+                analysis=self.analyze(repo),
+                llm_model=self.model_name,
+            )
+            for repo in repos
+        ]
 
 
 def restore_from_backlog(row: dict[str, Any]) -> AnalyzedProject | None:
@@ -494,6 +505,8 @@ def restore_from_backlog(row: dict[str, Any]) -> AnalyzedProject | None:
         analysis=normalize_analysis(payload, repo),
         from_backlog=True,
         backlog_analyzed_at=str(row.get("fetched_at") or "")[:10],
+        # 保留当初给出这份分析的模型，不要冒充成现在配置的那个
+        llm_model=str(row.get("llm_model") or ""),
     )
 
 

@@ -39,6 +39,17 @@ CREATE INDEX IF NOT EXISTS idx_projects_pushed_at ON projects(pushed_at);
 CREATE INDEX IF NOT EXISTS idx_projects_backlog ON projects(status, total_score DESC);
 """
 
+# 后加的列。用 ALTER TABLE 补，老库升级时不丢数据。
+# 每项都是「事后想查却查不到」的东西：
+#   llm_model    换模型后回头对比打分质量，必须知道每条是哪个模型给的分
+#   from_backlog 这次推送是当日新项目还是候补池顶上来的
+#   report_url   report_path 是容器内路径，对外链接得单独存
+MIGRATIONS: dict[str, str] = {
+    "llm_model": "TEXT",
+    "from_backlog": "INTEGER DEFAULT 0",
+    "report_url": "TEXT",
+}
+
 _PUSHED_STATUSES = ("pushed", "degraded")
 # 分析过但从未推送出去的项目 —— 候补池。
 # 这些记录带着完整的 LLM 分析 JSON，重新拿来推送时无需再调模型。
@@ -79,7 +90,17 @@ class Database:
             except sqlite3.Error as exc:
                 LOGGER.warning("启用 WAL 失败，沿用默认 journal 模式: %s", exc)
             conn.executescript(SCHEMA)
+            self._migrate(conn)
         LOGGER.debug("SQLite 初始化完成: %s", self.path)
+
+    @staticmethod
+    def _migrate(conn: sqlite3.Connection) -> None:
+        """补齐后加的列。已存在就跳过，可以反复执行。"""
+        existing = {row["name"] for row in conn.execute("PRAGMA table_info(projects)")}
+        for column, decl in MIGRATIONS.items():
+            if column not in existing:
+                conn.execute(f"ALTER TABLE projects ADD COLUMN {column} {decl}")
+                LOGGER.info("数据库升级：新增列 %s", column)
 
     # ------------------------------------------------------------------ 去重
 

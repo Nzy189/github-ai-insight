@@ -168,6 +168,8 @@ class AnalyzedProject:
     # 取自候补池（往期分析过但没推送过），而非当天新抓取的
     from_backlog: bool = False
     backlog_analyzed_at: str = ""
+    # 给出这份分析的模型。换模型后回头对比打分质量时全靠它
+    llm_model: str = ""
 
     @property
     def total_score(self) -> float:
@@ -189,6 +191,9 @@ class AnalyzedProject:
             "rating": self.analysis.rating,
             "total_score": self.total_score,
             "report_path": self.report_path,
+            "report_url": self.report_url,
+            "from_backlog": int(self.from_backlog),
+            "llm_model": self.llm_model,
             "status": self.status,
             "error_message": self.error_message,
         }

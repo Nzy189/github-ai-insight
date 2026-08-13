@@ -102,6 +102,18 @@ class ReportGenerator:
             lstrip_blocks=True,
         )
 
+    @property
+    def archive_index_url(self) -> str:
+        """归档首页地址 —— 由 report_base_url 去掉末段 /reports 反推。
+
+        不用相对路径 "/"：报告是自包含单文件，可能被下载到本地用 file://
+        打开，那时 "/" 会指向文件系统根目录。没配 base_url 就不给这个链接。
+        """
+        base = self.report_base_url
+        if not base:
+            return ""
+        return base[: -len("/reports")] + "/" if base.endswith("/reports") else base + "/"
+
     # ------------------------------------------------------------ 模板上下文
 
     def build_context(self, project: AnalyzedProject, report_date: date) -> dict[str, Any]:
@@ -153,6 +165,7 @@ class ReportGenerator:
                 analysis.difficulty, "badge-difficulty-mid"
             ),
             "intro_html": render_markdown(analysis.detailed_intro),
+            "archive_url": self.archive_index_url,
             "from_backlog": project.from_backlog,
             "backlog_analyzed_at": project.backlog_analyzed_at,
             "report_date": report_date.strftime("%Y-%m-%d"),
