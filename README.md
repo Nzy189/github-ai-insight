@@ -51,11 +51,25 @@ docker compose logs -f --tail 30
 
 ```
 GitHub Search API  →  SQLite 去重  →  LLM 分析打分  →  选出最高分  →  HTML + 企微 + 归档
-   topic:ai/llm       full_name         结构化 JSON      今日候选 ∪ 候补池
-   近 N 天 Top 5      已推送则跳过      四维评分
+   新生 + 新星        full_name         结构化 JSON      今日候选 ∪ 候补池
+   两通道交替取样      已推送则跳过      四维评分
 ```
 
 **评分权重**：实用性 35% · 解决问题 30% · 受欢迎程度 25% · NAS 可用性 10%
+
+### 两条抓取通道
+
+GitHub Search 只能按 `created` 过滤，**没有「最近涨星快」这个条件**。只靠一条窄窗口通道，
+两个月前创建、如今上万星的项目永远不会进候选 —— 它早就滑出窗口了，不是排名靠后，是压根查不到。
+
+| 通道 | 查询 | 抓的是 |
+|---|---|---|
+| 新生 | `created:>=SEARCH_DAYS 天 stars:>=MIN_STARS` | 刚出生的 |
+| 新星 | `created:>=RISING_DAYS 天 stars:>=RISING_MIN_STARS` | 已被市场验证、但我们错过了的 |
+
+两条通道**交替取样**，不是合并后按 star 排序 —— 排序会让新星通道里的巨头永久压制新生通道
+（3 天内的项目普遍只有几十星），「发现新项目」会静悄悄退化成「补看旧项目」。
+设 `RISING_ENABLED=false` 可关掉第二条通道。
 
 ### 候补池
 
