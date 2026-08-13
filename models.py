@@ -20,6 +20,7 @@ Status = Literal[
     "failed",    # 推送失败，留在候补池等下次
     "skipped",   # 分析过、落选，进候补池
     "rejected",  # 分析过、低于阈值，永不参与也不再抓
+    "obsolete",  # 判定为老掉牙，一票否决。与 rejected 分开存，便于事后审计误杀
     "retry",     # 分析失败，允许下次重新抓来分析
 ]
 
@@ -40,6 +41,8 @@ class Repo:
     pushed_at: str = ""
     owner: str = ""
     readme: str = ""
+    # 作者本人已把仓库归档 —— 唯一无需模型判断的「老掉牙」硬信号。
+    archived: bool = False
 
     @property
     def slug(self) -> str:
@@ -86,6 +89,7 @@ class Repo:
             created_at=item.get("created_at") or "",
             pushed_at=item.get("pushed_at") or "",
             owner=owner,
+            archived=bool(item.get("archived")),
         )
 
 
@@ -143,6 +147,10 @@ class Analysis:
     detailed_intro: str = ""
     scores: Scores = field(default_factory=Scores)
     tldr: Tldr = field(default_factory=Tldr)
+    # 老掉牙一票否决。默认 False —— 字段缺失、解析失败、走降级，
+    # 都不构成「判死」的依据，绝不能替没做过的判断下结论。
+    obsolete: bool = False
+    obsolete_reason: str = ""
     degraded: bool = False
     degrade_reason: str = ""
     raw_json: str = ""
@@ -158,6 +166,8 @@ class Analysis:
             "rating_reason": self.rating_reason,
             "detailed_intro": self.detailed_intro,
             "scores": self.scores.as_dict(),
+            "obsolete": self.obsolete,
+            "obsolete_reason": self.obsolete_reason,
         }
 
 

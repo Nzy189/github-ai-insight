@@ -70,6 +70,17 @@ class TestDedup:
         )
         assert result == {"a/brand-new"}
 
+    def test_filter_new_excludes_obsolete(self, db):
+        """判过老掉牙的不能再抓回来 —— 否则每天重新花一次 LLM 的钱得出同一个结论。"""
+        db.save_project(row("a/obsolete", "obsolete"))
+        assert db.filter_new(["a/obsolete", "a/new"]) == {"a/new"}
+
+    def test_obsolete_never_enters_the_backlog(self, db):
+        """候补池是「好但今天没赢」，老掉牙不属于这一类，不该有翻身机会。"""
+        db.save_project(row("a/obsolete", "obsolete", 95.0))
+        assert db.best_backlog() is None
+        assert db.backlog_size() == 0
+
     def test_filter_new_keeps_retry(self, db):
         """retry 是分析失败的，应该再抓回来试一次。"""
         db.save_project(row("a/retry", "retry"))

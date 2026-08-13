@@ -75,6 +75,10 @@ def classify_loser(project: AnalyzedProject, reject_below: float) -> str:
     降级分析不适用淘汰规则：那 50 分是分析失败时的占位值，不代表项目差，
     因一次网络抖动就把项目永久拉黑是错的。
     """
+    # 老掉牙是一票否决，与分数无关 —— 单独存一个状态，
+    # 事后才能审计「因为过时被毙」的有没有误杀，而不是和低分项混成一堆。
+    if project.analysis.obsolete:
+        return "obsolete"
     if project.analysis.degraded:
         return "retry"
     if project.total_score < reject_below:
@@ -191,6 +195,14 @@ def run_once(settings: Settings, *, report_date: date | None = None,
         summary.errors.append(str(exc))
         return summary
 
+    # 作者本人已归档 = 明确宣布不再维护，这是唯一无需模型判断的老掉牙硬信号。
+    # 在去重之前就丢掉：它们不该占用候选名额，更不该花 LLM 的钱去问。
+    archived = [r for r in repos if r.archived]
+    if archived:
+        LOGGER.info("丢弃 %d 个已归档仓库: %s", len(archived),
+                    ", ".join(r.full_name for r in archived[:5]))
+        repos = [r for r in repos if not r.archived]
+
     summary.fetched = len(repos)
     LOGGER.info("抓取到 %d 个仓库", len(repos))
 
@@ -221,7 +233,13 @@ def run_once(settings: Settings, *, report_date: date | None = None,
     # 每天分析 5 个只推 1 个，落选的 4 个过了 GitHub「近 3 天」的搜索窗口
     # 就再也不会出现在候选里。它们的完整分析结果还在库里，当天所有新项目
     # 都打不过其中某一个时，就把那个顶上来推 —— 无需再调 LLM。
-    today_winner = pick_winner(projects)
+    # 老掉牙的项目不参与评选。刻意不改 pick_winner —— 它是个纯粹的取最大值，
+    # 把否决逻辑塞进去会让「为什么这个没赢」变得难以追查。
+    contenders = [p for p in projects if not p.analysis.obsolete]
+    if len(contenders) < len(projects):
+        LOGGER.info("%d 个项目因老掉牙被否决，不参与评选", len(projects) - len(contenders))
+
+    today_winner = pick_winner(contenders)
     winner = today_winner
     backlog_row = db.best_backlog()
 
@@ -240,8 +258,14 @@ def run_once(settings: Settings, *, report_date: date | None = None,
                 LOGGER.info("改用候补池项目（当日新项目均未超过它）")
 
     if winner is None:
-        LOGGER.info("今日无候选，候补池也是空的")
-        summary.reason = "去重后无候选项目"
+        # 可能是真的没抓到，也可能是分析过了但全被否决。后者必须落库，
+        # 否则明天会把同一批项目重新抓回来、重新花 LLM 的钱、再否决一次。
+        for p in projects:
+            p.status = classify_loser(p, settings.reject_below)
+            db.save_project(p.to_db_row())
+        LOGGER.info("今日无可推送项目（分析 %d 个，候补池 %d 条）",
+                    len(projects), db.backlog_size())
+        summary.reason = "全部候选均被否决" if projects else "去重后无候选项目"
         summary.ok = True
         if settings.notify_empty and not settings.dry_run:
             result = notifier.push_empty(report_date)

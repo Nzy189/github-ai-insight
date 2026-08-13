@@ -288,6 +288,55 @@ class TestDegradedTldr:
         assert build_degraded_analysis(r, "x").tldr.pain == "该仓库未填写描述"
 
 
+class TestObsoleteVerdict:
+    """「老掉牙」一票否决 —— 去掉时间窗口后，星数榜深处全是停更多年的高星尸体。"""
+
+    def _parse(self, payload, repo):
+        return normalize_analysis(payload, repo)
+
+    def test_verdict_true_is_parsed(self, repo):
+        a = self._parse({"obsolete": True, "obsolete_reason": "已被 vLLM 取代"}, repo)
+        assert a.obsolete is True
+        assert a.obsolete_reason == "已被 vLLM 取代"
+
+    def test_missing_field_defaults_to_not_obsolete(self, repo):
+        """字段缺失绝不能等于「判死」—— 否则模型漏一个键就会静默淘汰整批项目。"""
+        assert self._parse({}, repo).obsolete is False
+
+    def test_non_boolean_verdict_is_not_obsolete(self, repo):
+        """模型爱写 "false" / "否" / null，任何非 True 值都按「不是」处理。"""
+        for junk in ("false", "no", None, 0, "", [], {"v": 1}):
+            assert self._parse({"obsolete": junk}, repo).obsolete is False, junk
+
+    def test_string_true_counts_as_obsolete(self, repo):
+        """但 "true" 字符串必须认 —— 不少模型的 JSON 模式会把布尔写成字符串。"""
+        assert self._parse({"obsolete": "true"}, repo).obsolete is True
+
+    def test_degraded_analysis_is_never_obsolete(self, repo):
+        """LLM 挂了走降级，此时没人做过判断，不能替它下结论。"""
+        assert build_degraded_analysis(repo, "超时").obsolete is False
+
+
+class TestObsoletePromptConstraints:
+    def _prompt(self, repo):
+        return AIAnalyzer(None).build_prompt(repo)
+
+    def test_gives_the_model_the_last_commit_time(self, repo):
+        """只给创建时间，模型无从判断项目是否还活着。"""
+        assert "最后提交" in self._prompt(repo)
+
+    def test_declares_obsolete_in_json_schema(self, repo):
+        assert '"obsolete"' in self._prompt(repo)
+
+    def test_forbids_judging_by_unfamiliarity(self, repo):
+        """模型有知识截止时间，「没听过」会被它当成「不重要」——
+        而这个系统的全部价值恰恰在于推送它没听过的东西。"""
+        assert "没听过不等于过时" in self._prompt(repo)
+
+    def test_says_maturity_is_not_obsolescence(self, repo):
+        assert "成熟不等于过时" in self._prompt(repo)
+
+
 class TestPromptHardConstraints:
     def _prompt(self, repo):
         return AIAnalyzer(None).build_prompt(repo)

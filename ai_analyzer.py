@@ -35,6 +35,8 @@ USER_PROMPT_TEMPLATE = """请分析以下 GitHub 项目，并按指定 JSON 格�
 - Star 数: {stars}
 - Fork 数: {forks}
 - 创建时间: {created_at}
+- 最后提交: {pushed_at}
+- 是否已归档: {archived}
 
 ## README（可能已截断）
 {readme}
@@ -56,6 +58,8 @@ USER_PROMPT_TEMPLATE = """请分析以下 GitHub 项目，并按指定 JSON 格�
   "rating": 1到5的整数,
   "rating_reason": "推荐或不推荐的理由，60 字以内",
   "detailed_intro": "面向普通用户的详细介绍，400-700 字。见下方"详细介绍的写法"，必须分段",
+  "obsolete": true 或 false（布尔值，见下方"老掉牙判定"）,
+  "obsolete_reason": "判为 true 时给出具体理由，30 字以内；判 false 时留空字符串",
   "scores": {{
     "utility": 0到100的整数,
     "problem_solving": 0到100的整数,
@@ -69,6 +73,24 @@ USER_PROMPT_TEMPLATE = """请分析以下 GitHub 项目，并按指定 JSON 格�
 - problem_solving（解决问题能力）: 痛点明确性、方案可行性
 - popularity（受欢迎程度）: Star 数与近期增长趋势，结合项目年龄判断
 - nas_usability（NAS 可用性）: 是否提供 Docker 镜像/compose、资源占用是否适合家用 NAS（无独显、内存有限）
+
+## 老掉牙判定（obsolete）
+
+这是一票否决位：判 true 的项目会被直接淘汰，不再推送、也不再参与后续比较。
+因此**判定必须有依据，不确定时一律判 false**。
+
+判 **true** 的条件（满足任意一条即可，并在 obsolete_reason 里说明是哪一条）：
+1. 核心功能已被更主流的项目取代，且你能**说出取代者的名字**
+2. 只支持早已停止维护的技术栈或模型版本，在今天已经跑不起来
+3. 本质不是可运行的工具，而是教程、论文清单、awesome 列表、课程作业、面试题集
+4. README 或元数据显示项目已归档、已停止维护，或作者明确建议改用别的项目
+
+以下情况**一律判 false**，不许当作老掉牙：
+- **你没听过它** —— 你的知识有截止时间，没听过不等于过时。
+  本系统的全部价值就在于推送你没听过的东西，把陌生当过时会毁掉它
+- **star 数高、创建时间早** —— 成熟不等于过时，长期维护的项目正是好项目
+- **最近没有提交，但项目本身功能完整**（单一用途的小工具做完就不需要改了）
+- 你只是觉得它不够新潮、不够热门 —— 那是评分要解决的事，不是这一位
 
 ## 一句话总结（one_liner）的写法
 
@@ -265,6 +287,20 @@ def normalize_tldr(payload: dict[str, Any], repo: Repo) -> Tldr:
     return Tldr(pain=_truncate(pain), solution=_truncate(solution), fit=_truncate(fit))
 
 
+def _as_verdict(raw: Any) -> bool:
+    """一票否决位的解析 —— 只有明确的「是」才算是。
+
+    这里刻意【不】用 bool(raw)：模型经常把布尔写成字符串，
+    而 bool("false") 是 True，会把一批好项目静默判死。
+    默认取「否」，因为漏杀的代价只是多推一个旧项目，误杀的代价是永久丢失。
+    """
+    if isinstance(raw, bool):
+        return raw
+    if isinstance(raw, str):
+        return raw.strip().lower() in {"true", "yes", "1", "是"}
+    return False
+
+
 def normalize_analysis(payload: dict[str, Any], repo: Repo) -> Analysis:
     """把 LLM 的 JSON 规整成 Analysis，越界值一律夹紧而不是报错。"""
     raw_highlights = payload.get("highlights")
@@ -292,6 +328,11 @@ def normalize_analysis(payload: dict[str, Any], repo: Repo) -> Analysis:
         nas_usability=_clamp_int(raw_scores.get("nas_usability"), 0, 100, 50),
     )
 
+    obsolete = _as_verdict(payload.get("obsolete"))
+    if obsolete:
+        LOGGER.info("判定为老掉牙 %s: %s", repo.full_name,
+                    _as_str(payload.get("obsolete_reason")) or "未给出理由")
+
     return Analysis(
         one_liner=_as_str(payload.get("one_liner")) or repo.description or repo.repo_name,
         highlights=highlights[:6],
@@ -302,6 +343,8 @@ def normalize_analysis(payload: dict[str, Any], repo: Repo) -> Analysis:
         detailed_intro=_as_str(payload.get("detailed_intro")) or _as_str(payload.get("one_liner")),
         scores=scores,
         tldr=normalize_tldr(payload, repo),
+        obsolete=obsolete,
+        obsolete_reason=_as_str(payload.get("obsolete_reason")) if obsolete else "",
         raw_json=json.dumps(payload, ensure_ascii=False, indent=2),
     )
 
@@ -425,6 +468,8 @@ class AIAnalyzer:
             stars=repo.stars,
             forks=repo.forks,
             created_at=repo.created_at or "未知",
+            pushed_at=repo.pushed_at or "未知",
+            archived="是" if repo.archived else "否",
             readme=repo.readme or "（未能获取 README）",
         )
 

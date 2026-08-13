@@ -58,7 +58,7 @@ _BACKLOG_STATUSES = ("skipped", "failed")
 # 唯独 retry 不在其中 —— 那些是分析失败的，值得再抓回来试一次。
 # 不这么做的话，候补池里的项目只要还在搜索窗口内，每天都会被重新调用
 # LLM 分析一遍，纯粹烧钱。
-_SEEN_STATUSES = ("pushed", "degraded", "skipped", "failed", "rejected")
+_SEEN_STATUSES = ("pushed", "degraded", "skipped", "failed", "rejected", "obsolete")
 
 
 class Database:

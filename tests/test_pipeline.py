@@ -300,6 +300,91 @@ class TestScheduling:
         main.run_scheduler(s)  # 不抛异常即为通过
 
 
+class TestObsoleteRejection:
+    """老掉牙一票否决 —— 去掉时间窗口后，星数榜深处全是停更多年的高星尸体，
+    它们在「受欢迎程度」那 25% 上还能拿满分。"""
+
+    def _run_with_verdicts(self, tmp_path, monkeypatch, verdicts):
+        """verdicts: {repo_full_name: obsolete_bool}"""
+        s = Settings(data_dir=tmp_path / "d", mock_mode=True, candidate_count=3)
+        comps = build_components(s)
+        analyzer = comps["analyzer"]
+        orig = analyzer.analyze
+
+        def patched(repo, *a, **kw):
+            analysis = orig(repo, *a, **kw)
+            analysis.obsolete = verdicts.get(repo.full_name, False)
+            if analysis.obsolete:
+                analysis.obsolete_reason = "停更三年，已被后继项目取代"
+            return analysis
+
+        monkeypatch.setattr(analyzer, "analyze", patched)
+        summary = run_once(s, report_date=REPORT_DATE, components=comps)
+        return s, summary
+
+    def _rows(self, settings):
+        import sqlite3
+        conn = sqlite3.connect(settings.db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            return {r["repo_name"]: r["status"] for r in
+                    conn.execute("SELECT repo_name, status FROM projects")}
+        finally:
+            conn.close()
+
+    def test_obsolete_project_never_wins_even_with_the_top_score(self, tmp_path, monkeypatch):
+        s = Settings(data_dir=tmp_path / "d", mock_mode=True, candidate_count=3)
+        comps = build_components(s)
+        # 先看不打否决时谁会赢
+        baseline = run_once(s, report_date=REPORT_DATE, components=comps)
+        champion = baseline.winner.repo.full_name
+
+        s2, summary = self._run_with_verdicts(tmp_path / "again", monkeypatch, {champion: True})
+        assert summary.winner is None or summary.winner.repo.full_name != champion
+
+    def test_obsolete_is_recorded_under_its_own_status_not_as_a_low_score(
+            self, tmp_path, monkeypatch):
+        """要能事后审计有没有误杀 —— 「因为过时被毙」和「因为分低被毙」必须分得开。"""
+        s = Settings(data_dir=tmp_path / "d", mock_mode=True, candidate_count=3)
+        comps = build_components(s)
+        baseline = run_once(s, report_date=REPORT_DATE, components=comps)
+        champion = baseline.winner.repo.full_name
+
+        s2, _ = self._run_with_verdicts(tmp_path / "again", monkeypatch, {champion: True})
+        assert self._rows(s2)[champion] == "obsolete"
+
+    def test_all_obsolete_means_no_push_not_a_crash(self, tmp_path, monkeypatch):
+        s = Settings(data_dir=tmp_path / "d", mock_mode=True, candidate_count=3)
+        comps = build_components(s)
+        names = [r.full_name for r in comps["github"].search_channels(channels=[], limit=99)] \
+            or [r.full_name for r in comps["github"].search_repos(limit=99)]
+        s2, summary = self._run_with_verdicts(
+            tmp_path / "again", monkeypatch, {n: True for n in names})
+        assert summary.pushed is False
+        assert set(self._rows(s2).values()) == {"obsolete"}
+
+    def test_archived_repos_are_dropped_before_the_llm_is_called(self, tmp_path, monkeypatch):
+        """作者本人已归档 —— 不需要花钱问模型。"""
+        from models import Repo
+        s = Settings(data_dir=tmp_path / "d", mock_mode=True, candidate_count=3)
+        comps = build_components(s)
+        analyzed: list[str] = []
+        orig = comps["analyzer"].analyze
+
+        def spy(repo, *a, **kw):
+            analyzed.append(repo.full_name)
+            return orig(repo, *a, **kw)
+
+        live = Repo(full_name="live/one", html_url="u", description="d", stars=100)
+        dead = Repo(full_name="dead/two", html_url="u", description="d", stars=9999,
+                    archived=True)
+        monkeypatch.setattr(comps["github"], "search_channels",
+                            lambda **kw: [dead, live])
+        monkeypatch.setattr(comps["analyzer"], "analyze", spy)
+        run_once(s, report_date=REPORT_DATE, components=comps)
+        assert analyzed == ["live/one"]
+
+
 class TestSearchChannels:
     """抓取通道 —— created:>= 只认创建时间，单通道必然漏掉「早就建好、最近才火」的项目。"""
 
