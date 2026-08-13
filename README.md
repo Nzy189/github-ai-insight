@@ -52,14 +52,14 @@ docker compose logs -f --tail 30
 ```
 GitHub Search API  →  SQLite 去重  →  LLM 分析打分  →  选出最高分  →  HTML + 企微 + 归档
    topic:ai/llm       full_name         结构化 JSON      今日候选 ∪ 候补池
-   近 3 天 Top 5      已推送则跳过      四维评分
+   近 N 天 Top 5      已推送则跳过      四维评分
 ```
 
 **评分权重**：实用性 35% · 解决问题 30% · 受欢迎程度 25% · NAS 可用性 10%
 
 ### 候补池
 
-每天分析 5 个只推 1 个，落选的 4 个过了 GitHub「近 3 天」的搜索窗口就再也不会出现在
+每天分析 5 个只推 1 个，落选的 4 个过了 GitHub 搜索窗口（`SEARCH_DAYS` 天）就再也不会出现在
 候选里 —— 但它们的完整分析结果留在了库里。**选题时取「今日候选 ∪ 候补池」的全局最高分**：
 
 ```
@@ -111,16 +111,16 @@ python main.py --now --model claude-sonnet-4-5 --candidates 10 --days 7
 | 变量 | 必填 | 默认 | 说明 |
 |------|------|------|------|
 | `LLM_API_KEY` | 是 | — | 不填则全部降级为 GitHub 元数据摘要 |
-| `LLM_BASE_URL` | 是 | `https://api.openai.com/v1` | OpenAI 兼容端点 |
+| `LLM_BASE_URL` | 是 | `https://api.openai.com/v1` | OpenAI 兼容端点，`.env.example` 里有 6 组服务商预设 |
 | `LLM_MODEL` | 是 | `gpt-4o` | 模型名 |
 | `LLM_PROVIDER` | 否 | `openai` | `openai` 或 `anthropic` |
 | `GITHUB_TOKEN` | 否 | 空 | 不填走匿名，60 次/小时 |
 | `WECHAT_WEBHOOK_URL` | 否 | 空 | 不填则跳过推送 |
-| `REPORT_BASE_URL` | 否 | `http://localhost:8080/reports` | **必须改成 NAS 实际地址** |
+| `REPORT_BASE_URL` | 否 | `http://localhost:8080/reports` | **必须是手机在任何网络下都能访问的地址**，见 [DEPLOY.md](DEPLOY.md) |
 | `EXECUTION_TIME` | 否 | `12:00` | 按 `TIMEZONE` 解释 |
 | `TIMEZONE` | 否 | `Asia/Dubai` | |
 | `CANDIDATE_COUNT` | 否 | `5` | 初筛候选数 |
-| `SEARCH_DAYS` | 否 | `3` | 搜索近 N 天 |
+| `SEARCH_DAYS` | 否 | `3` | 搜索近 N 天。`.env.example` 里给的是 `15` —— 3 天实测太窄，常抓不满候选 |
 | `MIN_STARS` | 否 | `10` | Star 门槛 |
 | `NOTIFY_EMPTY` | 否 | `false` | 无候选时是否推送 |
 | `DATA_DIR` | 否 | `./data` | |
@@ -143,7 +143,7 @@ python main.py --now --model claude-sonnet-4-5 --candidates 10 --days 7
 ├── mock_data.py           本地测试假数据与假客户端
 ├── templates/
 │   └── report.html.j2     自包含暗色报告模板
-├── tests/                 232 个单元与端到端测试
+├── tests/                 238 个单元与端到端测试
 ├── scripts/               本地一键验证脚本
 ├── Dockerfile
 ├── docker-entrypoint.sh   PUID/PGID 降权（NAS 权限适配）
@@ -196,14 +196,16 @@ data/
 - LLM 输出先做 HTML 转义，再用白名单扩展渲染 Markdown（显式排除 `attr_list`，
   否则 `{: onclick=... }` 语法能绕过转义给标签塞事件属性）
 
-访问：`http://{NAS_IP}:8080/reports`
+访问：`http://{Tailscale_IP}:8080/reports`（见 [DEPLOY.md](DEPLOY.md)）
 
 ---
 
 ## NAS 部署注意
 
 1. `PUID` / `PGID` 改成 NAS 上 `id` 命令的实际输出，否则 `./data` 写不进去
-2. `REPORT_BASE_URL` 改成局域网地址，否则企微里的链接在手机上打不开
+2. `REPORT_BASE_URL` 用 Tailscale IP —— 局域网 IP 只在连家里 WiFi 时有效，
+   用流量点开仍是死链。内置 HTTP 服务基于 Python `http.server` 且无鉴权，
+   不应直接暴露公网
 3. `TZ` 与 `TIMEZONE` 保持一致
 4. 健康检查探测 SQLite 可连接性，`docker compose ps` 显示 `healthy` 即正常
 
