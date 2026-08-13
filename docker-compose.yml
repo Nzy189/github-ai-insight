@@ -22,8 +22,11 @@ services:
       PGID: "${PGID:-1000}"
       DATA_DIR: "/app/data"
 
+    # 两侧必须同号：容器内的应用是按 .env 里的 HTTP_PORT 绑定的，
+    # 若只改宿主机侧会导致映射到一个没人监听的容器端口。
+    # 很多 NAS 的 8080 已被自带服务占用，换端口前先确认目标端口空闲。
     ports:
-      - "${HTTP_PORT:-8080}:8080"
+      - "${HTTP_PORT:-8080}:${HTTP_PORT:-8080}"
 
     healthcheck:
       test:

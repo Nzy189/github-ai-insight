@@ -45,6 +45,22 @@ id
 
 ---
 
+## 2.5 确认端口没被占用
+
+**极空间的 8080 和 8088 默认就被自带服务占着**，直接用会起不来。
+先挑一个空闲端口：
+
+```bash
+for p in 8080 8081 8088 9080 18080; do
+  ss -tln | grep -q ":$p " && echo "$p 已占用" || echo "$p 空闲"
+done
+```
+
+选定的端口同时填进 `.env` 的 `HTTP_PORT`，并让 `REPORT_BASE_URL` 用同一个端口。
+compose 的映射两侧同号，不需要额外改动。
+
+---
+
 ## 3. 配置
 
 ```bash
@@ -59,7 +75,7 @@ vi .env
 | `LLM_API_KEY` | 你的模型 API Key |
 | `LLM_BASE_URL` / `LLM_MODEL` | 取消注释对应的服务商预设块 |
 | `WECHAT_WEBHOOK_URL` | 企微群机器人 Webhook |
-| `REPORT_BASE_URL` | `http://100.x.y.z:8080/reports` ← 极空间的 **Tailscale IP** |
+| `REPORT_BASE_URL` | `http://100.x.y.z:<HTTP_PORT>/reports` ← 极空间的 **Tailscale IP** + 上一步选定的端口 |
 
 另外两项按环境调整：
 
@@ -86,7 +102,7 @@ docker compose logs -f --tail 50
 已启用操作系统证书存储 (truststore)      ← 若 USE_SYSTEM_CERTS=true 才有
 启动自检：验证 LLM 配置 glm-5.2 @ https://...
 启动自检通过 ✓
-报告 HTTP 服务已启动（后台）: http://0.0.0.0:8080/reports
+报告 HTTP 服务已启动（后台）: http://0.0.0.0:<HTTP_PORT>/reports
 调度已启动 | 每日 12:00 (Asia/Dubai)
 下次执行: 2026-08-14 12:00:00+04:00
 ```
@@ -117,18 +133,18 @@ docker compose exec github-ai-insight python main.py --list
 在**手机流量**下（关掉 WiFi）打开：
 
 ```
-http://100.x.y.z:8080/reports
+http://100.x.y.z:<HTTP_PORT>/reports
 ```
 
 打得开就说明整条链路通了。打不开的排查顺序：
 
 1. 手机的 Tailscale 客户端是不是连着（图标是否为已连接状态）
 2. 极空间上 `tailscale status` 里手机是否在列
-3. NAS 本机 `curl http://127.0.0.1:8080/health` 是否返回 `ok`
-4. 极空间的防火墙是否拦了 8080
+3. NAS 本机 `curl http://127.0.0.1:<HTTP_PORT>/health` 是否返回 `ok`
+4. 极空间的防火墙是否拦了该端口
 
 > **注意**：如果 Tailscale 是以容器形式跑在极空间上、且没用 host 网络模式，
-> 那么 NAS 宿主机本身可能并不在 tailnet 上，`100.x.y.z:8080` 会不通。
+> 那么 NAS 宿主机本身可能并不在 tailnet 上，`100.x.y.z:<HTTP_PORT>` 会不通。
 > 这种情况要么把 Tailscale 换成宿主机安装，要么给报告容器加
 > `network_mode: service:tailscale`。
 
