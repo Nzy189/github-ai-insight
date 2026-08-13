@@ -16,7 +16,8 @@ python -m pip install -r requirements-dev.txt
 python main.py --now --mock --open
 ```
 
-完整的本地测试方案见 **[LOCAL_TESTING.md](LOCAL_TESTING.md)**。
+完整的本地测试方案见 **[LOCAL_TESTING.md](LOCAL_TESTING.md)**，
+NAS 上线步骤见 **[DEPLOY.md](DEPLOY.md)**（极空间 + Tailscale）。
 
 正式部署：
 
