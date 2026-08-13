@@ -4,17 +4,27 @@ services:
     image: github-ai-insight:latest
     container_name: github-ai-insight
     restart: unless-stopped
-    env_file: .env
-    environment:
-      # NAS 权限适配：改成 NAS 上执行 `id` 得到的实际值
-      PUID: "1000"
-      PGID: "1000"
-      TZ: "${TIMEZONE:-Asia/Dubai}"
-      DATA_DIR: "/app/data"
+
+    # 刻意不使用 env_file —— 那会在「容器创建时」把变量烤进环境，
+    # 之后改 .env 再 restart 是不生效的，必须 up -d 重建。
+    # 改成把 .env 挂进容器，由应用在「进程启动时」读文件，
+    # 这样 `docker compose restart` 就能真正让新配置生效。
     volumes:
       - ./data:/app/data
+      - ./.env:/app/.env:ro
+
+    # 这几项必须是真环境变量（进程起来前就要生效），
+    # 用 compose 自身的变量插值从 ./.env 取值。
+    # 注意：改这三个仍需 `docker compose up -d`，因为插值发生在创建时。
+    environment:
+      TZ: "${TIMEZONE:-Asia/Dubai}"
+      PUID: "${PUID:-1000}"
+      PGID: "${PGID:-1000}"
+      DATA_DIR: "/app/data"
+
     ports:
-      - "8080:8080"
+      - "${HTTP_PORT:-8080}:8080"
+
     healthcheck:
       test:
         - CMD
@@ -25,6 +35,7 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
+
     logging:
       driver: json-file
       options:

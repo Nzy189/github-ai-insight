@@ -25,6 +25,25 @@ cp .env.example .env
 docker compose up -d
 ```
 
+**改配置（换模型 / 换 API / 改推送地址）**：编辑 `.env`，然后
+
+```bash
+docker compose restart
+```
+
+`.env` 是以**文件**形式挂进容器的，应用在进程启动时读它，所以 `restart` 就能生效
+——不需要 `up -d` 重建。唯一的例外是 `TIMEZONE` / `PUID` / `PGID` / `HTTP_PORT`
+这四项（它们要在进程起来之前生效），改这些仍需 `docker compose up -d`。
+
+改完看一眼日志确认新配置可用：
+
+```bash
+docker compose logs -f --tail 30
+```
+
+启动时会自动发一次最小 LLM 请求做自检，日志里出现 `启动自检通过 ✓` 就说明
+新模型能用；配错了会直接打出错误原因，不用等到第二天收到一条全降级的日报。
+
 ---
 
 ## 工作流
@@ -64,7 +83,16 @@ python main.py --now --dry-run      # 真实分析但不推送企微
 python main.py --now --open         # 执行完用浏览器打开报告
 python main.py --serve              # 只启动报告 HTTP 服务
 python main.py --show-config        # 查看当前配置（密钥脱敏）
+python main.py --test-llm           # 验证 LLM Key / 地址 / 模型是否可用
 python main.py --list               # 查看数据库最近记录
+```
+
+容器里同样可用，换模型后手动验一下：
+
+```bash
+docker compose exec github-ai-insight python main.py --test-llm
+docker compose exec github-ai-insight python main.py --show-config
+docker compose exec github-ai-insight python main.py --now   # 立刻跑一次，不等定时
 ```
 
 覆盖 `.env` 的临时参数（优先级更高）：

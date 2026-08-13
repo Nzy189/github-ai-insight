@@ -54,6 +54,10 @@ class Settings(BaseSettings):
     llm_provider: Literal["openai", "anthropic"] = "openai"
     llm_timeout: int = 120
     llm_max_tokens: int = 4096
+    # 常驻模式启动时发一次最小 LLM 请求验证配置。
+    # 换模型/换 API 后重启容器，配错了立刻在 docker logs 里看到，
+    # 而不是等到第二天 12:00 收到一条全降级的日报才发现。
+    startup_llm_check: bool = True
 
     # --- 推送 ---
     wechat_webhook_url: str = ""

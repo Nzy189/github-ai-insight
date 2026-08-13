@@ -284,6 +284,8 @@ def run_scheduler(settings: Settings) -> None:
 
         server = report_server.start_background(settings.data_dir, settings.http_port)
 
+    _startup_llm_check(settings)
+
     scheduler = BlockingScheduler(timezone=tz)
     scheduler.add_job(
         lambda: _safe_run(settings),
@@ -319,6 +321,47 @@ def run_scheduler(settings: Settings) -> None:
     finally:
         if server:
             server.shutdown()
+
+
+def _startup_llm_check(settings: Settings) -> None:
+    """常驻启动时验一次 LLM 配置，结果只写日志，绝不阻止启动。
+
+    换模型或换 API 之后重启容器，配错了这里立刻报出来；否则要等到
+    第二天执行时间收到一条全降级的日报才会发现。
+    """
+    if settings.mock_mode or not settings.startup_llm_check:
+        return
+    if not settings.llm_api_key:
+        LOGGER.warning("启动自检：LLM_API_KEY 未配置，分析将全部降级")
+        return
+
+    from ai_analyzer import FatalLLMError, LLMError, extract_json
+
+    LOGGER.info("启动自检：验证 LLM 配置 %s @ %s", settings.llm_model, settings.llm_base_url)
+    client = LLMClient(
+        api_key=settings.llm_api_key,
+        base_url=settings.llm_base_url,
+        model=settings.llm_model,
+        provider=settings.llm_provider,
+        timeout=min(settings.llm_timeout, 60),
+        max_tokens=256,
+        session=requests.Session(),
+    )
+    try:
+        reply = client.complete(
+            "你是一个测试助手，只输出 JSON。",
+            '请原样返回：{"ok": true}',
+        )
+    except (FatalLLMError, LLMError) as exc:
+        LOGGER.error("⚠️ 启动自检失败：%s —— 分析会全部降级，请检查 .env 后重启容器", exc)
+        return
+
+    try:
+        extract_json(reply)
+    except ValueError:
+        LOGGER.warning("启动自检：模型可连通但未返回可解析 JSON，可能频繁降级；建议换模型")
+        return
+    LOGGER.info("启动自检通过 ✓")
 
 
 def _safe_run(settings: Settings) -> None:

@@ -208,3 +208,49 @@ class TestCLI:
     def test_list_on_empty_db(self, capsys, tmp_path):
         assert main.main(["--list", "--data-dir", str(tmp_path)]) == 0
         assert "数据库为空" in capsys.readouterr().out
+
+
+class TestStartupLlmCheck:
+    """常驻启动自检 —— 无论如何都不能阻止容器起来。"""
+
+    def test_skipped_in_mock_mode(self, mock_settings, caplog):
+        main._startup_llm_check(mock_settings)
+        assert "启动自检" not in caplog.text
+
+    def test_warns_when_key_missing(self, tmp_path, caplog):
+        s = Settings(data_dir=tmp_path, mock_mode=False, llm_api_key="")
+        main._startup_llm_check(s)
+        assert "LLM_API_KEY 未配置" in caplog.text
+
+    def test_can_be_disabled(self, tmp_path, caplog):
+        s = Settings(data_dir=tmp_path, mock_mode=False,
+                     llm_api_key="sk-x", startup_llm_check=False)
+        main._startup_llm_check(s)
+        assert caplog.text == ""
+
+    def test_llm_failure_is_logged_not_raised(self, tmp_path, caplog, monkeypatch):
+        from ai_analyzer import FatalLLMError
+
+        s = Settings(data_dir=tmp_path, mock_mode=False, llm_api_key="sk-bad")
+        monkeypatch.setattr(
+            "main.LLMClient.complete",
+            lambda *_a, **_k: (_ for _ in ()).throw(FatalLLMError("401 Key 无效")),
+        )
+        main._startup_llm_check(s)  # 不抛异常即为通过
+        assert "启动自检失败" in caplog.text
+        assert "401" in caplog.text
+
+    def test_non_json_reply_warns(self, tmp_path, caplog, monkeypatch):
+        s = Settings(data_dir=tmp_path, mock_mode=False, llm_api_key="sk-x")
+        monkeypatch.setattr("main.LLMClient.complete", lambda *_a, **_k: "我不会输出 JSON")
+        main._startup_llm_check(s)
+        assert "未返回可解析 JSON" in caplog.text
+
+    def test_success_logs_pass(self, tmp_path, caplog, monkeypatch):
+        import logging
+
+        s = Settings(data_dir=tmp_path, mock_mode=False, llm_api_key="sk-x")
+        monkeypatch.setattr("main.LLMClient.complete", lambda *_a, **_k: '{"ok": true}')
+        with caplog.at_level(logging.INFO, logger="main"):
+            main._startup_llm_check(s)
+        assert "启动自检通过" in caplog.text
