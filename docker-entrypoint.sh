@@ -29,9 +29,13 @@ if [ -d /app/.env ]; then
   echo "[entrypoint] 或者改用 GUI 方式：把 .env 放进数据目录（\$DATA_DIR/.env），只挂目录不挂文件。" >&2
   exit 1
 fi
-# 配置可以来自 /app/.env（compose 挂文件）或 $DATA_DIR/.env（GUI 型 NAS 只能挂目录）。
-if [ ! -f /app/.env ] && [ ! -f "$DATA_DIR/.env" ]; then
-  echo "[entrypoint] 警告：没找到 .env（既不在 /app/.env 也不在 $DATA_DIR/.env）。" >&2
+# 配置可以来自 /app/.env（compose 挂文件）或数据目录里的 .env / config.env
+# （GUI 型 NAS 只能挂目录；config.env 不以点开头，文件管理器里看得见）。
+if [ ! -f /app/.env ] && [ ! -f "$DATA_DIR/.env" ] && [ ! -f "$DATA_DIR/config.env" ]; then
+  echo "[entrypoint] 警告：没找到配置文件。已查找：" >&2
+  echo "[entrypoint]   /app/.env" >&2
+  echo "[entrypoint]   $DATA_DIR/.env        （点开头，文件管理器里可能被隐藏）" >&2
+  echo "[entrypoint]   $DATA_DIR/config.env  （推荐：不隐藏，随时可编辑）" >&2
   echo "[entrypoint] 将全部使用默认值，LLM 分析会整体降级。" >&2
 fi
 

@@ -18,3 +18,5 @@ venv/
 # 导出的 Docker 镜像包，不进仓库
 *.tar
 *.tar.gz
+
+config.env

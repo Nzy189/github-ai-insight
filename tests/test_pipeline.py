@@ -288,3 +288,46 @@ class TestScheduling:
         )
         monkeypatch.setattr(BlockingScheduler, "start", lambda self, *a, **k: None)
         main.run_scheduler(s)  # 不抛异常即为通过
+
+
+class TestCandidatePool:
+    """去重必须在截断之前 —— 否则前 N 名推完后系统就不再发现新项目了。"""
+
+    def _settings(self, tmp_path, **kw):
+        return Settings(data_dir=tmp_path / "d", mock_mode=True, candidate_count=2, **kw)
+
+    def test_requests_a_pool_larger_than_candidate_count(self, tmp_path, monkeypatch):
+        s = self._settings(tmp_path)
+        comps = build_components(s)
+        seen = {}
+        orig = comps["github"].search_repos
+
+        def spy(**kw):
+            seen.update(kw)
+            return orig(**kw)
+
+        monkeypatch.setattr(comps["github"], "search_repos", spy)
+        run_once(s, report_date=REPORT_DATE, components=comps)
+        assert seen["limit"] == 2 * s.candidate_pool_factor
+
+    def test_only_candidate_count_get_analyzed(self, tmp_path):
+        """池子大不代表多花 LLM 钱 —— 分析的仍然只有 candidate_count 个。"""
+        s = self._settings(tmp_path)
+        result = run_once(s, report_date=REPORT_DATE, components=build_components(s))
+        assert result.candidates == 2
+        assert Database(s.db_path).count() == 2
+
+    def test_lower_ranked_projects_surface_after_top_ones_are_pushed(self, tmp_path):
+        """核心回归：把前几名推完之后，后面的项目要能递补上来。
+
+        mock 有 5 个仓库、每次只取 2 个候选。修复前第 3 次就会因为
+        「取前 2 个」恒为已推送的那两个而候选归零。
+        """
+        s = self._settings(tmp_path)
+        winners = []
+        for _ in range(5):
+            r = run_once(s, report_date=REPORT_DATE)
+            if r.winner and not r.from_backlog:
+                winners.append(r.winner.repo.full_name)
+
+        assert len(set(winners)) >= 4, f"只发现了 {set(winners)}，说明低排名项目没能递补"

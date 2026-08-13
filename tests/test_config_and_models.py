@@ -118,3 +118,42 @@ class TestTldr:
         assert isinstance(analysis.tldr, Tldr)
         assert "tldr" in analysis.as_dict()
         assert analysis.as_dict()["tldr"] == analysis.tldr.as_dict()
+
+
+class TestEnvFileDiscovery:
+    """配置文件查找 —— GUI 型 NAS 上 .env 是隐藏文件，得支持看得见的名字。"""
+
+    def test_config_env_is_read(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "config.env").write_text("LLM_MODEL=来自config.env\n", encoding="utf-8")
+        assert Settings().llm_model == "来自config.env"
+
+    def test_config_env_wins_over_dotenv(self, tmp_path, monkeypatch):
+        """两个都在时，用户在文件管理器里看得见的那个说了算。"""
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".env").write_text("LLM_MODEL=隐藏的\n", encoding="utf-8")
+        (tmp_path / "config.env").write_text("LLM_MODEL=可见的\n", encoding="utf-8")
+        assert Settings().llm_model == "可见的"
+
+    def test_data_dir_config_env_is_read(self, tmp_path, monkeypatch):
+        """容器场景：只挂了数据目录，配置放在里面。"""
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "data").mkdir()
+        (tmp_path / "data" / "config.env").write_text("EXECUTION_TIME=05:45\n", encoding="utf-8")
+        assert Settings().execution_time == "05:45"
+
+    def test_loaded_env_files_reports_what_was_used(self, tmp_path, monkeypatch):
+        from config import loaded_env_files
+
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "config.env").write_text("LOG_LEVEL=DEBUG\n", encoding="utf-8")
+        found = loaded_env_files()
+        assert len(found) == 1
+        assert found[0].endswith("config.env")
+
+    def test_no_config_file_uses_defaults(self, tmp_path, monkeypatch):
+        from config import loaded_env_files
+
+        monkeypatch.chdir(tmp_path)
+        assert loaded_env_files() == []
+        assert Settings().llm_model == "gpt-4o"

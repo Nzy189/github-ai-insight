@@ -33,14 +33,13 @@ SCORE_LABELS_CN: dict[str, str] = {
 class Settings(BaseSettings):
     """全部运行时配置。字段名与 .env 中的大写变量一一对应（大小写不敏感）。"""
 
-    # 按顺序读取，后者覆盖前者。
-    #   .env            —— 本地开发
-    #   ./data/.env     —— 本地把配置和数据放一起时
-    #   /app/data/.env  —— 容器内。GUI 型 NAS（极空间等）通常只能挂目录、
-    #                      挂不了单个文件，把 .env 放进数据目录就只需要一个
-    #                      目录挂载，用 NAS 的文件管理器改完重启容器即生效。
+    # 按顺序读取，后者覆盖前者。见模块底部 ENV_FILE_CANDIDATES 的说明。
     model_config = SettingsConfigDict(
-        env_file=(".env", "./data/.env", "/app/data/.env"),
+        env_file=(
+            ".env", "config.env",
+            "./data/.env", "./data/config.env",
+            "/app/data/.env", "/app/data/config.env",
+        ),
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
@@ -50,6 +49,10 @@ class Settings(BaseSettings):
     github_token: str = ""
     search_days: int = 3
     candidate_count: int = 5
+    # 实际向 GitHub 要 candidate_count × 这个倍数 个仓库，去重后再取前 N。
+    # 只抓 N 个的话，前 N 名全被推过之后候选就归零了，而后面那些从没看过的
+    # 项目根本没机会露面。抓取本身不花 LLM 成本，池子大一点没有代价。
+    candidate_pool_factor: int = 6
     min_stars: int = 10
     readme_max_chars: int = 24_000  # ≈ 8000 token
 
@@ -200,7 +203,20 @@ def apply_tls_settings(settings: Settings) -> None:
             LOGGER.info("已加载自定义 CA 证书: %s", path)
 
 
-ENV_FILE_CANDIDATES = (".env", "./data/.env", "/app/data/.env")
+# 配置文件查找顺序，后者覆盖前者。
+#
+# 两个位置：项目根目录（本地开发）和数据目录（容器内，因为 GUI 型 NAS
+# 通常只能挂目录、挂不了单个文件）。
+#
+# 两个文件名：`.env` 是惯例，但点开头在 Linux 上是隐藏文件，极空间这类
+# NAS 的文件管理器默认不显示 —— 而换模型、改 Webhook 全靠编辑这个文件。
+# 所以同时支持不隐藏的 `config.env`，并让它优先级更高：两个都在时，
+# 用户看得见的那个说了算。
+ENV_FILE_CANDIDATES = (
+    ".env", "config.env",
+    "./data/.env", "./data/config.env",
+    "/app/data/.env", "/app/data/config.env",
+)
 
 
 def loaded_env_files() -> list[str]:

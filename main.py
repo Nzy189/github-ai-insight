@@ -151,9 +151,12 @@ def run_once(settings: Settings, *, report_date: date | None = None,
 
     # --- 1. 抓取 -------------------------------------------------------
     try:
+        # 捞一个比候选数大得多的池子：去重必须发生在截断【之前】。
+        # 否则前 N 名一旦全被推过，候选就是 0，而排在后面那些从没看过的
+        # 项目会被白白丢掉 —— 系统看起来还在跑，实际已经停止发现新项目了。
         repos = github.search_repos(
             days=settings.search_days,
-            limit=settings.candidate_count,
+            limit=settings.candidate_count * settings.candidate_pool_factor,
             min_stars=settings.min_stars,
         )
     except GitHubError as exc:
@@ -167,9 +170,13 @@ def run_once(settings: Settings, *, report_date: date | None = None,
 
     # --- 2. 去重 -------------------------------------------------------
     new_names = db.filter_new([r.full_name for r in repos])
-    candidates = [r for r in repos if r.full_name in new_names]
+    fresh = [r for r in repos if r.full_name in new_names]
+    # 去重之后才截断到候选数：排名靠后的项目在前面的被推完后能自然递补
+    candidates = fresh[: settings.candidate_count]
     summary.candidates = len(candidates)
-    LOGGER.info("去重后剩余 %d 个候选", len(candidates))
+    LOGGER.info(
+        "去重后剩余 %d 个未推送，取前 %d 个分析", len(fresh), len(candidates)
+    )
 
     # --- 3. 分析打分 ---------------------------------------------------
     projects: list[AnalyzedProject] = []
