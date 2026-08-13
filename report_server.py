@@ -133,8 +133,10 @@ class ReportRequestHandler(SimpleHTTPRequestHandler):
         if r.get("from_backlog"):
             badge += ' <span class="b b-blk">往期精选</span>'
 
-        # report_path 是容器内路径，对外只能按文件名找
-        fname = Path(str(r.get("report_path") or "")).name
+        # report_path 是写入时那台机器的路径，对外只能按文件名找。
+        # 不能用 Path().name：库可能是在 Windows 上生成的（存的是反斜杠），
+        # 而这里跑在 Linux 容器里，POSIX 不把 \ 当分隔符，整串会被当成文件名。
+        fname = str(r.get("report_path") or "").replace("\\", "/").rsplit("/", 1)[-1]
         title = (f'<a href="/reports/{html.escape(fname)}">{name}</a>'
                  if fname and fname in existing else name)
 

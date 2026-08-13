@@ -100,3 +100,25 @@ def test_index_survives_corrupt_database(tmp_path):
 
     assert status == 200
     assert "2026-08-12-x.html" in body
+
+
+def test_windows_report_path_still_links_on_posix(tmp_path):
+    """库可能是在 Windows 上生成的（report_path 存反斜杠），
+    而服务跑在 Linux 容器里 —— 取文件名不能依赖 os.sep。"""
+    from db import Database
+
+    (tmp_path / "reports").mkdir()
+    (tmp_path / "reports" / "2026-08-13-a_b.html").write_text("x", encoding="utf-8")
+    db = Database(tmp_path / "github_ai_insight.db")
+    db.save_project({
+        "repo_name": "a/b", "repo_url": "u", "one_liner": "x", "total_score": 90.0,
+        "status": "pushed", "report_path": r"data\reports\2026-08-13-a_b.html",
+    }, mark_pushed=True)
+
+    srv = report_server.start_background(tmp_path, 0)
+    try:
+        _, body = _get(srv.server_address[1], "/")
+    finally:
+        srv.shutdown()
+
+    assert 'href="/reports/2026-08-13-a_b.html"' in body
