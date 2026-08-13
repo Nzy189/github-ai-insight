@@ -7,8 +7,10 @@ from __future__ import annotations
 
 import logging
 import time
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any, Iterable
+from itertools import zip_longest
+from typing import Any, Iterable, Sequence
 
 import requests
 
@@ -18,12 +20,42 @@ LOGGER = logging.getLogger(__name__)
 
 API_ROOT = "https://api.github.com"
 SEARCH_TOPICS = ("ai", "llm")
+
+
+@dataclass(frozen=True, slots=True)
+class SearchChannel:
+    """一条抓取通道 = 一组（时间窗口, 星数下限）。
+
+    GitHub Search 只能按 `created` 过滤，没有「最近涨星快」这种条件。
+    单靠一条窄窗口通道，两个月前创建、如今上万星的项目永远不会出现在候选里 ——
+    它早就滑出了 created 窗口。用两条互补的通道逼近：
+
+      新生：窗口窄、门槛低 —— 抓刚出生的
+      新星：窗口宽、门槛高 —— 抓已经被市场验证、但我们错过了的
+    """
+
+    name: str
+    days: int
+    min_stars: int
 USER_AGENT = "github-ai-insight/1.0"
 RETRY_BACKOFF = (5, 15)  # 秒，指数退避
 
 
 class GitHubError(RuntimeError):
     """GitHub 抓取失败且已耗尽重试。"""
+
+
+def _interleave(per_channel: Sequence[Sequence[Repo]], limit: int) -> list[Repo]:
+    """轮流从每条通道取一个，跨通道去重，取满 limit 为止。"""
+    merged: dict[str, Repo] = {}
+    for row in zip_longest(*per_channel):
+        for repo in row:
+            if repo is None or not repo.full_name or repo.full_name in merged:
+                continue
+            merged[repo.full_name] = repo
+            if len(merged) >= limit:
+                return list(merged.values())
+    return list(merged.values())
 
 
 class GitHubClient:
@@ -167,6 +199,45 @@ class GitHubClient:
         ranked = sorted(merged.values(), key=lambda r: r.stars, reverse=True)
         LOGGER.info("合并去重后 %d 个仓库，取前 %d 个", len(ranked), limit)
         return ranked[:limit]
+
+    def search_channels(
+        self,
+        *,
+        channels: Sequence[SearchChannel],
+        limit: int = 5,
+        topics: Iterable[str] = SEARCH_TOPICS,
+        now: datetime | None = None,
+    ) -> list[Repo]:
+        """按多条通道抓取并交替取样。
+
+        刻意【不】把各通道结果合并后按 star 排序：新生通道里的项目普遍只有几十星，
+        排序后会被新星通道里那些上万星的巨头永久压在后面，于是「发现新项目」
+        这个核心功能会静悄悄退化成「补看旧项目」。
+        """
+        per_channel: list[list[Repo]] = []
+        failed = 0
+        last_error: Exception | None = None
+
+        for channel in channels:
+            LOGGER.info("通道「%s」: 近 %d 天 / ≥%d 星", channel.name, channel.days, channel.min_stars)
+            try:
+                repos = self.search_repos(
+                    days=channel.days, limit=limit, min_stars=channel.min_stars,
+                    topics=topics, now=now,
+                )
+            except GitHubError as exc:
+                LOGGER.error("通道「%s」抓取失败，跳过: %s", channel.name, exc)
+                failed += 1
+                last_error = exc
+                continue
+            LOGGER.info("通道「%s」得到 %d 个仓库", channel.name, len(repos))
+            per_channel.append(repos)
+
+        # 与 topic 同理：部分通道失败可以容忍，全部失败必须上报。
+        if channels and failed == len(channels):
+            raise GitHubError(f"全部 {len(channels)} 个通道抓取均失败，最后错误: {last_error}")
+
+        return _interleave(per_channel, limit)
 
     # ------------------------------------------------------------------ README
 

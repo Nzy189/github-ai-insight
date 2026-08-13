@@ -23,7 +23,7 @@ from pydantic import ValidationError
 from ai_analyzer import AIAnalyzer, LLMClient, pick_winner, restore_from_backlog
 from config import Settings, apply_tls_settings, load_settings, setup_logging
 from db import Database
-from github_client import GitHubClient, GitHubError
+from github_client import GitHubClient, GitHubError, SearchChannel
 from models import AnalyzedProject
 from report_generator import ReportGenerator
 from wechat_notifier import WeChatNotifier
@@ -147,6 +147,20 @@ def build_components(settings: Settings) -> dict[str, Any]:
 # ====================================================================== 流程
 
 
+def build_search_channels(settings: Settings) -> list[SearchChannel]:
+    """两条互补的抓取通道 —— 少任何一条，都有一整类项目永远看不见。
+
+    新生：近几天创建、门槛低 —— 系统的本职，发现刚出生的项目。
+    新星：近几个月创建、门槛高 —— 补上「早就建好、最近才火」这一类。
+    """
+    channels = [SearchChannel("新生", days=settings.search_days, min_stars=settings.min_stars)]
+    if settings.rising_enabled:
+        channels.append(
+            SearchChannel("新星", days=settings.rising_days, min_stars=settings.rising_min_stars)
+        )
+    return channels
+
+
 def run_once(settings: Settings, *, report_date: date | None = None,
              components: dict[str, Any] | None = None) -> RunSummary:
     """执行一次完整流程：抓取 → 去重 → 分析 → 选优 → 报告 → 推送 → 归档。"""
@@ -167,10 +181,9 @@ def run_once(settings: Settings, *, report_date: date | None = None,
         # 捞一个比候选数大得多的池子：去重必须发生在截断【之前】。
         # 否则前 N 名一旦全被推过，候选就是 0，而排在后面那些从没看过的
         # 项目会被白白丢掉 —— 系统看起来还在跑，实际已经停止发现新项目了。
-        repos = github.search_repos(
-            days=settings.search_days,
+        repos = github.search_channels(
+            channels=build_search_channels(settings),
             limit=settings.candidate_count * settings.candidate_pool_factor,
-            min_stars=settings.min_stars,
         )
     except GitHubError as exc:
         LOGGER.error("GitHub 抓取失败，本次跳过: %s", exc)

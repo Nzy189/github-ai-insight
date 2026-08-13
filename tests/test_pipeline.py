@@ -162,7 +162,7 @@ class TestFailureModes:
         def boom(**_):
             raise GitHubError("速率限制")
 
-        monkeypatch.setattr(comps["github"], "search_repos", boom)
+        monkeypatch.setattr(comps["github"], "search_channels", boom)
         s = run_once(mock_settings, report_date=REPORT_DATE, components=comps)
         assert s.ok is False
         assert "GitHub 抓取失败" in s.reason
@@ -300,6 +300,44 @@ class TestScheduling:
         main.run_scheduler(s)  # 不抛异常即为通过
 
 
+class TestSearchChannels:
+    """抓取通道 —— created:>= 只认创建时间，单通道必然漏掉「早就建好、最近才火」的项目。"""
+
+    def test_both_channels_are_used_by_default(self, tmp_path):
+        s = Settings(data_dir=tmp_path / "d", mock_mode=True)
+        channels = main.build_search_channels(s)
+        assert [(c.days, c.min_stars) for c in channels] == [
+            (s.search_days, s.min_stars),
+            (s.rising_days, s.rising_min_stars),
+        ]
+
+    def test_rising_channel_widens_the_window_and_raises_the_floor(self, tmp_path):
+        """两条通道必须真正互补：窗口更宽、门槛更高。
+        否则新增的只是一条重复通道，白花 API 配额还是抓不到晚熟项目。"""
+        s = Settings(data_dir=tmp_path / "d", mock_mode=True)
+        newborn, rising = main.build_search_channels(s)
+        assert rising.days > newborn.days
+        assert rising.min_stars > newborn.min_stars
+
+    def test_rising_channel_can_be_turned_off(self, tmp_path):
+        s = Settings(data_dir=tmp_path / "d", mock_mode=True, rising_enabled=False)
+        assert len(main.build_search_channels(s)) == 1
+
+    def test_pipeline_actually_passes_both_channels_to_github(self, tmp_path, monkeypatch):
+        s = Settings(data_dir=tmp_path / "d", mock_mode=True, candidate_count=2)
+        comps = build_components(s)
+        seen = {}
+        orig = comps["github"].search_channels
+
+        def spy(**kw):
+            seen.update(kw)
+            return orig(**kw)
+
+        monkeypatch.setattr(comps["github"], "search_channels", spy)
+        run_once(s, report_date=REPORT_DATE, components=comps)
+        assert [c.name for c in seen["channels"]] == ["新生", "新星"]
+
+
 class TestCandidatePool:
     """去重必须在截断之前 —— 否则前 N 名推完后系统就不再发现新项目了。"""
 
@@ -310,13 +348,13 @@ class TestCandidatePool:
         s = self._settings(tmp_path)
         comps = build_components(s)
         seen = {}
-        orig = comps["github"].search_repos
+        orig = comps["github"].search_channels
 
         def spy(**kw):
             seen.update(kw)
             return orig(**kw)
 
-        monkeypatch.setattr(comps["github"], "search_repos", spy)
+        monkeypatch.setattr(comps["github"], "search_channels", spy)
         run_once(s, report_date=REPORT_DATE, components=comps)
         assert seen["limit"] == 2 * s.candidate_pool_factor
 

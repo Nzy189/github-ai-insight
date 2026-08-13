@@ -54,6 +54,13 @@ class Settings(BaseSettings):
     # 项目根本没机会露面。抓取本身不花 LLM 成本，池子大一点没有代价。
     candidate_pool_factor: int = 6
     min_stars: int = 10
+    # 「新星」通道。GitHub Search 的 created:>= 只认创建时间，靠 search_days
+    # 这条窄窗口，两个月前创建、如今上万星的项目永远不会出现在候选里 ——
+    # 它早就滑出窗口了，不是排名靠后，是压根查不到。
+    # 这条通道用「宽窗口 + 高星门槛」把这类晚熟项目捞回来。
+    rising_enabled: bool = True
+    rising_days: int = 90
+    rising_min_stars: int = 500
     # 加权总分低于此值的项目直接标为 rejected：不推送、不进候补池、
     # 以后也不再抓回来分析。目的是别让候补池里堆满永远赢不了的项目。
     # 分析失败（降级）的不适用此规则 —— 那是 50 分的占位分，不代表项目差。

@@ -5,7 +5,10 @@ import time
 import pytest
 import requests
 
-from github_client import GitHubClient, GitHubError
+from github_client import GitHubClient, GitHubError, SearchChannel
+
+NEWBORN = SearchChannel("新生", days=3, min_stars=10)
+RISING = SearchChannel("新星", days=90, min_stars=500)
 
 
 class _Resp:
@@ -106,6 +109,55 @@ class TestSearch:
         ])
         repos = GitHubClient(session=session).search_repos()
         assert [r.full_name for r in repos] == ["a/ok"]
+
+
+class TestSearchChannels:
+    """多通道抓取 —— created:>= 只认创建时间，单通道必然漏掉「两个月前建、现在爆火」的项目。"""
+
+    def test_each_channel_uses_its_own_window_and_star_floor(self):
+        session = _Session([_Resp(payload=_items())] * 4)
+        GitHubClient(session=session).search_channels(channels=[NEWBORN, RISING])
+        queries = [c["params"]["q"] for c in session.calls]
+        assert sum("stars:>=10" in q for q in queries) == 2   # 两个 topic
+        assert sum("stars:>=500" in q for q in queries) == 2
+
+    def test_interleaves_so_the_high_star_channel_cannot_starve_the_newborn_one(self):
+        """按 star 合并排序的话，90 天的巨头会把 3 天的新项目永久挤出候选 ——
+        那就等于把「发现新项目」这个核心功能换成了「补看旧项目」。
+        """
+        session = _Session([
+            _Resp(payload=_items(("new/a", 40), ("new/b", 30))), _Resp(payload=_items()),
+            _Resp(payload=_items(("old/x", 9000), ("old/y", 8000))), _Resp(payload=_items()),
+        ])
+        repos = GitHubClient(session=session).search_channels(
+            channels=[NEWBORN, RISING], limit=4)
+        assert [r.full_name for r in repos] == ["new/a", "old/x", "new/b", "old/y"]
+
+    def test_dedupes_across_channels(self):
+        """3 天内创建又已经过 500 星的项目会同时命中两条通道。"""
+        session = _Session([
+            _Resp(payload=_items(("both/x", 900))), _Resp(payload=_items()),
+            _Resp(payload=_items(("both/x", 900), ("old/y", 800))), _Resp(payload=_items()),
+        ])
+        repos = GitHubClient(session=session).search_channels(
+            channels=[NEWBORN, RISING], limit=10)
+        assert [r.full_name for r in repos] == ["both/x", "old/y"]
+
+    def test_one_channel_failing_does_not_kill_the_run(self):
+        session = _Session(
+            [_Resp(status_code=503)] * 6
+            + [_Resp(payload=_items(("old/x", 900))), _Resp(payload=_items())]
+        )
+        repos = GitHubClient(session=session).search_channels(channels=[NEWBORN, RISING])
+        assert [r.full_name for r in repos] == ["old/x"]
+
+    def test_all_channels_failing_raises_not_returns_empty(self):
+        session = _Session([_Resp(status_code=503)] * 12)
+        with pytest.raises(GitHubError, match="全部 2 个通道"):
+            GitHubClient(session=session).search_channels(channels=[NEWBORN, RISING])
+
+    def test_empty_channel_list_is_not_an_error(self):
+        assert GitHubClient(session=_Session([])).search_channels(channels=[]) == []
 
 
 class TestRetryAndRateLimit:

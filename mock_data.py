@@ -236,6 +236,16 @@ class MockGitHubClient:
         LOGGER.info("[MOCK] 返回 %d 个假仓库（近 %d 天）", min(limit, len(self.repos)), days)
         return sorted(self.repos, key=lambda r: r.stars, reverse=True)[:limit]
 
+    def search_channels(self, *, channels: Any = (), limit: int = 5, **_: Any) -> list[Repo]:
+        """mock 不区分通道 —— 假数据集就那么几个，按 star 排序返回。
+
+        通道的取样与合并逻辑由 test_github_client 用假 HTTP 响应单独覆盖，
+        这里只需保证接口形状一致，别让 mock 链路跟真实链路走岔。
+        """
+        names = [getattr(c, "name", "?") for c in channels]
+        LOGGER.info("[MOCK] 通道 %s，返回 %d 个假仓库", names, min(limit, len(self.repos)))
+        return sorted(self.repos, key=lambda r: r.stars, reverse=True)[:limit]
+
     def repo_exists(self, full_name: str) -> bool:  # noqa: ARG002
         """mock 模拟的是一个正常的 GitHub —— 仓库一律视为存在。
 
