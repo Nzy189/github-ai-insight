@@ -1,5 +1,7 @@
 # GitHub AI Insight
 
+[English](README_EN.md) | **简体中文**
+
 > 部署在 NAS 上的 Docker 自动化服务。每天定时抓取 GitHub 热门 AI/LLM 开源项目，
 > 通过 LLM 深度分析打分，选出当日最高分项目，生成暗色主题 HTML 报告，并推送企业微信群机器人。
 
@@ -71,6 +73,22 @@ GitHub Search 只能按 `created` 过滤，**没有「最近涨星快」这个�
 （3 天内的项目普遍只有几十星），「发现新项目」会静悄悄退化成「补看旧项目」。
 设 `RISING_ENABLED=false` 可关掉第二条通道。
 
+### 老掉牙一票否决
+
+放宽时间窗口的代价是：星数榜深处全是停更多年的高星项目 —— awesome 清单、论文合集、
+被取代的旧框架。它们在「受欢迎程度」那 25% 上还能拿满分。
+
+因此在四维评分之外加了一个**否决位**（不是加权维度 —— 加权意味着一个死仓库仍可靠其他三项赢）：
+
+- **硬过滤**：仓库 `archived` 为真，在去重前就丢掉，不花 LLM 的钱去问
+- **模型判定**：LLM 在同一次调用里返回 `obsolete` 布尔值与理由。判 true 的条件是
+  「已被更主流项目取代且说得出取代者」「只支持已停维护的技术栈」「本质是教程/清单/作业」
+  「已归档或作者建议改用别的项目」
+
+防误杀是这部分的重点：字段缺失、解析失败、走降级**一律判 false**；
+prompt 里明写「你没听过它 ≠ 过时」（模型有知识截止时间，而本系统的价值恰恰是推送它没听过的东西）
+和「成熟 ≠ 过时」。被否决的项目单独记为 `obsolete` 状态，便于事后审计误杀。
+
 ### 候补池
 
 每天分析 5 个只推 1 个，落选的 4 个过了 GitHub 搜索窗口（`SEARCH_DAYS` 天）就再也不会出现在
@@ -97,6 +115,7 @@ GitHub Search 只能按 `created` 过滤，**没有「最近涨星快」这个�
 | `skipped` | 分析过、落选 | 否 | **是** |
 | `failed` | 推送失败，未送达 | 否 | **是** |
 | `rejected` | 低于 `REJECT_BELOW` | 否 | 否 |
+| `obsolete` | 判定为老掉牙，一票否决 | 否 | 否 |
 | `retry` | 分析失败，值得再试 | **是** | 否 |
 
 `retry` 是唯一会被重新抓回来分析的状态：降级时的 50 分是占位值，不代表项目差，
@@ -155,6 +174,9 @@ python main.py --now --model claude-sonnet-4-5 --candidates 10 --days 7
 | `CANDIDATE_COUNT` | 否 | `5` | 初筛候选数 |
 | `SEARCH_DAYS` | 否 | `3` | 搜索近 N 天。`.env.example` 里给的是 `15` —— 3 天实测太窄，常抓不满候选 |
 | `MIN_STARS` | 否 | `10` | Star 门槛 |
+| `RISING_ENABLED` | 否 | `true` | 是否启用「新星」通道 |
+| `RISING_DAYS` | 否 | `90` | 新星通道的时间窗口 |
+| `RISING_MIN_STARS` | 否 | `500` | 新星通道的 Star 门槛 |
 | `REJECT_BELOW` | 否 | `65` | 低于此分直接淘汰，不进候补池 |
 | `NOTIFY_EMPTY` | 否 | `false` | 无候选时是否推送 |
 | `DATA_DIR` | 否 | `./data` | |
@@ -177,7 +199,7 @@ python main.py --now --model claude-sonnet-4-5 --candidates 10 --days 7
 ├── mock_data.py           本地测试假数据与假客户端
 ├── templates/
 │   └── report.html.j2     自包含暗色报告模板
-├── tests/                 259 个单元与端到端测试
+├── tests/                 286 个单元与端到端测试
 ├── scripts/               本地一键验证脚本
 ├── Dockerfile
 ├── docker-entrypoint.sh   PUID/PGID 降权（NAS 权限适配）
