@@ -308,11 +308,25 @@ class TestPromptHardConstraints:
     def test_shows_negative_example_verbatim(self, repo):
         """反面示例必须原样给出 —— 抽象地说'不要名词堆叠'模型听不懂。"""
         p = self._prompt(repo)
-        assert "多供应商AI水印移除工具" in p
+        assert "多协议网盘统一管理工具" in p
         assert "名词短语堆叠" in p
 
     def test_shows_positive_example(self, repo):
-        assert "AI 写的东西会被偷偷打上隐形标记" in self._prompt(repo)
+        assert "网盘里存了十年照片却找不到想要的那张" in self._prompt(repo)
+
+    def test_examples_avoid_ai_tool_domain(self, repo):
+        """示例必须取自与被分析项目无关的领域。
+
+        原来的示例是「AI 水印去除」，遇到同领域项目时模型直接照抄了
+        整句 —— 恰好蒙对，但下次未必。示例只该教句式，不该教内容。
+        """
+        p = self._prompt(repo)
+        example_block = p.split("反面示例")[1].split("## 首屏三要素")[0]
+        for word in ("水印", "AI 写的东西", "隐形标记"):
+            assert word not in example_block, f"示例里出现了会被照抄的领域词: {word}"
+
+    def test_forbids_copying_the_examples(self, repo):
+        assert "禁止照抄示例中的任何词句" in self._prompt(repo)
 
     def test_forbids_empty_fit_phrasing(self, repo):
         assert "适合自托管用户" in self._prompt(repo)

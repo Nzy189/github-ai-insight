@@ -210,7 +210,6 @@
 .badge-difficulty-low  { background: rgba(34,197,94,0.15); color: #4ADE80; }
 .badge-difficulty-mid  { background: rgba(245,158,11,0.15); color: #FBBF24; }
 .badge-difficulty-high { background: rgba(239,68,68,0.15); color: #F87171; }
-.badge-rating          { background: rgba(59,130,246,0.12); color: #60A5FA; }
 .badge-topic           { background: #18181B; color: #A1A1AA; border: 1px solid #27272A; }
 ```
 
@@ -343,7 +342,6 @@
 |------|--------|----------|
 | `shadow-sm` | `0 1px 2px rgba(0,0,0,0.3)` | 输入框、小按钮 |
 | `shadow-md` | `0 1px 2px rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.15)` | 默认卡片 |
-| `shadow-lg` | `0 2px 4px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.25)` | 浮层卡片、hover 态 |
 | `shadow-glow` | `0 0 20px rgba(59,130,246,0.15)` | 焦点元素、活跃状态 |
 
 ### Surface Layers
