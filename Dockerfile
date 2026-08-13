@@ -7,9 +7,9 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     TZ=Asia/Dubai \
-    DATA_DIR=/app/data \
-    PUID=1000 \
-    PGID=1000
+    DATA_DIR=/app/data
+# 刻意不给 PUID/PGID 默认值：留空时 entrypoint 会沿用数据目录本身的属主，
+# 这样 GUI 型 NAS 的用户不必先查出自己的 uid，宿主机上的文件属主也不会被改掉。
 
 WORKDIR /app
 
