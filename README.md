@@ -72,6 +72,25 @@ GitHub Search API  →  SQLite 去重  →  LLM 分析打分  →  选出最高�
 
 今日候选为空时也会先看候补池，两边都空才回到「空结果策略」。
 
+### 项目状态
+
+抓取时会排除库里见过的一切 —— 已有分析结果的项目不再重复调用 LLM。
+
+| 状态 | 含义 | 会被重新抓取 | 参与候补池竞争 |
+|---|---|---|---|
+| `pushed` | 已推送 | 否 | 否 |
+| `degraded` | 用降级数据推送过 | 否 | 否 |
+| `skipped` | 分析过、落选 | 否 | **是** |
+| `failed` | 推送失败，未送达 | 否 | **是** |
+| `rejected` | 低于 `REJECT_BELOW` | 否 | 否 |
+| `retry` | 分析失败，值得再试 | **是** | 否 |
+
+`retry` 是唯一会被重新抓回来分析的状态：降级时的 50 分是占位值，不代表项目差，
+不该因为一次网络抖动就永久拉黑一个项目。
+
+全场最高分（含候补池）低于 `REJECT_BELOW` 时**当天不推送** —— 宁可安静一天，
+也不推垃圾。
+
 ---
 
 ## 命令行
@@ -122,6 +141,7 @@ python main.py --now --model claude-sonnet-4-5 --candidates 10 --days 7
 | `CANDIDATE_COUNT` | 否 | `5` | 初筛候选数 |
 | `SEARCH_DAYS` | 否 | `3` | 搜索近 N 天。`.env.example` 里给的是 `15` —— 3 天实测太窄，常抓不满候选 |
 | `MIN_STARS` | 否 | `10` | Star 门槛 |
+| `REJECT_BELOW` | 否 | `65` | 低于此分直接淘汰，不进候补池 |
 | `NOTIFY_EMPTY` | 否 | `false` | 无候选时是否推送 |
 | `DATA_DIR` | 否 | `./data` | |
 | `LOG_LEVEL` | 否 | `INFO` | |
@@ -143,7 +163,7 @@ python main.py --now --model claude-sonnet-4-5 --candidates 10 --days 7
 ├── mock_data.py           本地测试假数据与假客户端
 ├── templates/
 │   └── report.html.j2     自包含暗色报告模板
-├── tests/                 238 个单元与端到端测试
+├── tests/                 259 个单元与端到端测试
 ├── scripts/               本地一键验证脚本
 ├── Dockerfile
 ├── docker-entrypoint.sh   PUID/PGID 降权（NAS 权限适配）

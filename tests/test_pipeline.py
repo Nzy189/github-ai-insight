@@ -94,24 +94,34 @@ class TestFullRun:
 
 
 class TestDedup:
-    def test_second_run_skips_pushed_winner(self, mock_settings):
+    def test_second_run_does_not_reanalyze_known_projects(self, mock_settings):
+        """第一轮之后，库里见过的都不再抓回来分析 —— 只剩分析失败的那个
+        值得重试。当日胜出者换成候补池里的第二名。"""
         first = run_once(mock_settings, report_date=REPORT_DATE)
         second = run_once(mock_settings, report_date=REPORT_DATE)
 
-        assert second.candidates == 4
+        assert second.candidates == 1          # 只有 retry 的 llm-router
         assert second.winner.repo.full_name != first.winner.repo.full_name
+        assert second.from_backlog is True     # 79.3 的 ragfoundry 从候补池顶上
 
-    def test_exhausting_all_candidates_yields_empty_result(self, mock_settings):
+    def test_pool_eventually_drains(self, mock_settings):
+        """5 个 mock 仓库里，够分数的最终都会被推出去，
+        低于阈值的被淘汰，然后归于安静。"""
         winners = set()
-        for _ in range(5):
+        for _ in range(8):
             s = run_once(mock_settings, report_date=REPORT_DATE)
             if s.winner:
                 winners.add(s.winner.repo.full_name)
+
+        assert {"localstack-ai/agentmesh", "quietlabs/ragfoundry",
+                "nano-tools/whisperbox"} <= winners
+        assert "edge-cases/promptforge" not in winners, "56 分的项目不该被推出去"
+
+        db = Database(mock_settings.db_path)
+        assert db.backlog_size() == 0
         final = run_once(mock_settings, report_date=REPORT_DATE)
-        assert len(winners) == 5
-        assert final.ok is True
         assert final.winner is None
-        assert "无候选" in final.reason
+        assert final.ok is True
 
 
 class TestEmptyStrategy:
@@ -317,17 +327,21 @@ class TestCandidatePool:
         assert result.candidates == 2
         assert Database(s.db_path).count() == 2
 
-    def test_lower_ranked_projects_surface_after_top_ones_are_pushed(self, tmp_path):
-        """核心回归：把前几名推完之后，后面的项目要能递补上来。
+    def test_lower_ranked_projects_eventually_get_analyzed(self, tmp_path):
+        """核心回归：把 star 最高的几个推完之后，排名靠后的要能递补进候选。
 
-        mock 有 5 个仓库、每次只取 2 个候选。修复前第 3 次就会因为
-        「取前 2 个」恒为已推送的那两个而候选归零。
+        mock 有 5 个仓库、每次只取 2 个候选。修复前是「先按 star 取前 2，
+        再剔除推送过的」，所以第 2 轮起候选恒为空 —— 后面 3 个永远进不来。
+        断言「全部 5 个最终都进了库」正是在验证这一点。
         """
         s = self._settings(tmp_path)
-        winners = []
-        for _ in range(5):
-            r = run_once(s, report_date=REPORT_DATE)
-            if r.winner and not r.from_backlog:
-                winners.append(r.winner.repo.full_name)
+        for _ in range(6):
+            run_once(s, report_date=REPORT_DATE)
 
-        assert len(set(winners)) >= 4, f"只发现了 {set(winners)}，说明低排名项目没能递补"
+        seen = {r["repo_name"] for r in Database(s.db_path).recent(50)}
+        expected = {
+            "localstack-ai/agentmesh", "quietlabs/ragfoundry", "nano-tools/whisperbox",
+            "broken-json/llm-router", "edge-cases/promptforge",
+        }
+        missing = expected - seen
+        assert not missing, f"这些项目从未被分析到: {missing}"

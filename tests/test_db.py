@@ -58,11 +58,22 @@ class TestDedup:
         db.save_project(row("a/b", status))
         assert db.is_already_pushed("a/b") is False
 
-    def test_filter_new(self, db):
+    def test_filter_new_excludes_everything_already_seen(self, db):
+        """库里见过的一律不再抓 —— 它们要么已推送，要么在候补池里等着，
+        要么已被淘汰。重新抓回来分析纯粹是浪费 LLM 调用。"""
         db.save_project(row("a/pushed", "pushed"), mark_pushed=True)
         db.save_project(row("a/skipped", "skipped"))
-        result = db.filter_new(["a/pushed", "a/skipped", "a/brand-new"])
-        assert result == {"a/skipped", "a/brand-new"}
+        db.save_project(row("a/rejected", "rejected"))
+        db.save_project(row("a/failed", "failed"))
+        result = db.filter_new(
+            ["a/pushed", "a/skipped", "a/rejected", "a/failed", "a/brand-new"]
+        )
+        assert result == {"a/brand-new"}
+
+    def test_filter_new_keeps_retry(self, db):
+        """retry 是分析失败的，应该再抓回来试一次。"""
+        db.save_project(row("a/retry", "retry"))
+        assert db.filter_new(["a/retry", "a/new"]) == {"a/retry", "a/new"}
 
     def test_filter_new_empty_input(self, db):
         assert db.filter_new([]) == set()

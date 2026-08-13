@@ -54,6 +54,11 @@ _PUSHED_STATUSES = ("pushed", "degraded")
 # 分析过但从未推送出去的项目 —— 候补池。
 # 这些记录带着完整的 LLM 分析 JSON，重新拿来推送时无需再调模型。
 _BACKLOG_STATUSES = ("skipped", "failed")
+# 抓取时要排除的：库里见过的一切。
+# 唯独 retry 不在其中 —— 那些是分析失败的，值得再抓回来试一次。
+# 不这么做的话，候补池里的项目只要还在搜索窗口内，每天都会被重新调用
+# LLM 分析一遍，纯粹烧钱。
+_SEEN_STATUSES = ("pushed", "degraded", "skipped", "failed", "rejected")
 
 
 class Database:
@@ -118,16 +123,21 @@ class Database:
         return row is not None
 
     def filter_new(self, repo_names: list[str]) -> set[str]:
-        """批量去重：返回其中尚未推送过的名字集合。"""
+        """批量去重：返回库里没见过的名字集合。
+
+        「见过」= 推送过、在候补池里、或已被低分淘汰。这些都已经有分析结果
+        （或已明确不要），没有任何理由再花一次 LLM 调用重新分析。
+        只有标记为 retry 的例外 —— 那是分析失败，应该再试。
+        """
         if not repo_names:
             return set()
         placeholders = ",".join("?" * len(repo_names))
-        status_ph = ",".join("?" * len(_PUSHED_STATUSES))
+        status_ph = ",".join("?" * len(_SEEN_STATUSES))
         with self.connect() as conn:
             rows = conn.execute(
                 f"SELECT repo_name FROM projects "
                 f"WHERE repo_name IN ({placeholders}) AND status IN ({status_ph})",
-                (*repo_names, *_PUSHED_STATUSES),
+                (*repo_names, *_SEEN_STATUSES),
             ).fetchall()
         seen = {r["repo_name"] for r in rows}
         return {name for name in repo_names if name not in seen}

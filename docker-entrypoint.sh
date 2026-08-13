@@ -4,6 +4,30 @@ set -e
 
 DATA_DIR=${DATA_DIR:-/app/data}
 
+# 代码热更新：挂载目录里放了 src/ 就优先跑它，否则跑镜像内置的。
+#
+# GUI 型 NAS 上换镜像意味着删容器重建、重填挂载和端口。而这个项目是纯
+# Python、依赖很稳定，把源码放进挂载目录就能做到「覆盖文件 + 重启容器」
+# 完成升级，不碰镜像。
+#
+# 保护：先试导入一次，失败就回退到镜像内置代码 —— 传错文件不会把容器
+# 搞成重启循环。注意 src/ 里必须同时带上 templates/，报告模板按
+# __file__ 的相对位置查找。依赖变了仍然需要换镜像。
+resolve_app_dir() {
+  if [ ! -f "$DATA_DIR/src/main.py" ]; then
+    echo /app
+    return
+  fi
+  if (cd "$DATA_DIR/src" && python -c "import main" >/dev/null 2>&1); then
+    echo "[entrypoint] 使用挂载目录中的代码: $DATA_DIR/src" >&2
+    echo "$DATA_DIR/src"
+  else
+    echo "[entrypoint] 警告：$DATA_DIR/src 中的代码导入失败，回退到镜像内置代码" >&2
+    echo "[entrypoint] 依赖是否有变动？依赖变了必须换镜像。" >&2
+    echo /app
+  fi
+}
+
 # PUID/PGID 没显式给的话，沿用挂载目录本身的属主。
 # GUI 型 NAS（极空间等）通常不给终端，用户查不到自己的 uid；
 # 硬套 1000 会把目录 chown 成一个不属于他们的 uid，之后连从 NAS
@@ -58,7 +82,9 @@ if [ "$(id -u)" = "0" ]; then
   fi
 
   echo "[entrypoint] 以 UID=$PUID GID=$PGID 运行: $*"
+  cd "$(resolve_app_dir)"
   exec gosu "$PUID:$PGID" "$@"
 fi
 
+cd "$(resolve_app_dir)"
 exec "$@"

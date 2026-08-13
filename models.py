@@ -14,7 +14,14 @@ from typing import Any, Literal
 from config import SCORE_WEIGHTS
 
 Difficulty = Literal["low", "medium", "high"]
-Status = Literal["pushed", "failed", "degraded", "skipped"]
+Status = Literal[
+    "pushed",    # 已推送
+    "degraded",  # 用降级数据推送过（用户已经收到了，不再重复）
+    "failed",    # 推送失败，留在候补池等下次
+    "skipped",   # 分析过、落选，进候补池
+    "rejected",  # 分析过、低于阈值，永不参与也不再抓
+    "retry",     # 分析失败，允许下次重新抓来分析
+]
 
 
 @dataclass(slots=True)

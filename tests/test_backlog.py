@@ -177,11 +177,18 @@ class TestPipelineFallback:
         assert db.is_already_pushed("history/gem") is True
         assert (db.best_backlog() or {}).get("repo_name") != "history/gem"
 
-    def test_todays_losers_enter_the_pool(self, mock_settings):
+    def test_only_qualified_losers_enter_the_pool(self, mock_settings):
+        """5 个候选推 1 个；剩下 4 个里只有够分数的进候补池，
+        低于阈值的淘汰、分析失败的等重试。"""
         run_once(mock_settings, report_date=REPORT_DATE)
         db = Database(mock_settings.db_path)
-        # 5 个候选推 1 个，剩下 4 个进候补池
-        assert db.backlog_size() == 4
+        statuses = {r["repo_name"]: r["status"] for r in db.recent(10)}
+        assert statuses["localstack-ai/agentmesh"] == "pushed"
+        assert statuses["quietlabs/ragfoundry"] == "skipped"      # 79.3
+        assert statuses["nano-tools/whisperbox"] == "skipped"     # 78.1
+        assert statuses["edge-cases/promptforge"] == "rejected"   # 56.0 < 65
+        assert statuses["broken-json/llm-router"] == "retry"      # 分析失败
+        assert db.backlog_size() == 2
 
     def test_backlog_used_when_no_candidates_at_all(self, mock_settings):
         """去重后一个候选都没有时，也该去候补池捞 —— 而不是直接静默跳过。
@@ -238,11 +245,14 @@ class TestPipelineFallback:
         )
         assert "往期精选" not in html
 
-    def test_losers_get_backlog_archive(self, mock_settings):
+    def test_only_backlog_members_get_archived(self, mock_settings):
+        """被淘汰和待重试的没有保存价值，不该占归档空间。"""
         run_once(mock_settings, report_date=REPORT_DATE)
         backlog_dir = mock_settings.archive_dir / "backlog" / "2026-08"
-        assert backlog_dir.is_dir()
-        assert len(list(backlog_dir.glob("*.md"))) == 4
+        names = {f.stem for f in backlog_dir.glob("*.md")}
+        assert len(names) == 2
+        assert any("ragfoundry" in n for n in names)
+        assert not any("promptforge" in n for n in names)
 
 
 class TestWalMode:

@@ -69,6 +69,19 @@ class RunSummary:
         }
 
 
+def classify_loser(project: AnalyzedProject, reject_below: float) -> str:
+    """落选项目该进候补池、被淘汰，还是等着重试。
+
+    降级分析不适用淘汰规则：那 50 分是分析失败时的占位值，不代表项目差，
+    因一次网络抖动就把项目永久拉黑是错的。
+    """
+    if project.analysis.degraded:
+        return "retry"
+    if project.total_score < reject_below:
+        return "rejected"
+    return "skipped"
+
+
 def _backlog_repo_still_alive(github: Any, project: AnalyzedProject) -> bool:
     """推候补项目前确认仓库还在。客户端不支持检查时一律放行。"""
     check = getattr(github, "repo_exists", None)
@@ -224,6 +237,19 @@ def run_once(settings: Settings, *, report_date: date | None = None,
                 summary.errors.append(result.message)
         return summary
 
+    # 全场最高分都不及格 —— 宁可今天不推，也不推垃圾
+    if winner.total_score < settings.reject_below and not winner.analysis.degraded:
+        LOGGER.info(
+            "最高分 %.1f 低于阈值 %.1f，本次不推送",
+            winner.total_score, settings.reject_below,
+        )
+        summary.reason = f"最高分 {winner.total_score:.1f} 低于阈值 {settings.reject_below:.1f}"
+        summary.ok = True
+        for p in projects:
+            p.status = classify_loser(p, settings.reject_below)
+            db.save_project(p.to_db_row())
+        return summary
+
     summary.winner = winner
     summary.degraded = winner.analysis.degraded
     LOGGER.info(
@@ -256,17 +282,25 @@ def run_once(settings: Settings, *, report_date: date | None = None,
     summary.archive_path = str(generator.write_archive(winner, report_date))
 
     db.save_project(winner.to_db_row(), mark_pushed=summary.pushed)
+    tally: dict[str, int] = {}
     for loser in projects:
         if loser is winner:
             continue
-        loser.status = "skipped"
+        loser.status = classify_loser(loser, settings.reject_below)
+        tally[loser.status] = tally.get(loser.status, 0) + 1
         db.save_project(loser.to_db_row())
-        # 落选项目进候补池。SQLite 是候补池的唯一副本，NAS 上那个库
-        # 损坏就全没了 —— 顺手落一份 Markdown 便于人工恢复。
-        try:
-            generator.write_archive(loser, report_date, subdir="backlog")
-        except OSError as exc:
-            LOGGER.warning("候补归档写入失败 %s: %s", loser.repo.full_name, exc)
+        # 只给真正进候补池的落一份文本副本。SQLite 是候补池的唯一副本，
+        # NAS 上那个库损坏就全没了；被淘汰和待重试的没有保存价值。
+        if loser.status == "skipped":
+            try:
+                generator.write_archive(loser, report_date, subdir="backlog")
+            except OSError as exc:
+                LOGGER.warning("候补归档写入失败 %s: %s", loser.repo.full_name, exc)
+    if tally:
+        LOGGER.info(
+            "落选去向: %s",
+            " · ".join(f"{k} {v}" for k, v in sorted(tally.items())),
+        )
 
     summary.ok = True
     summary.reason = "完成"

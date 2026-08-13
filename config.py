@@ -54,6 +54,10 @@ class Settings(BaseSettings):
     # 项目根本没机会露面。抓取本身不花 LLM 成本，池子大一点没有代价。
     candidate_pool_factor: int = 6
     min_stars: int = 10
+    # 加权总分低于此值的项目直接标为 rejected：不推送、不进候补池、
+    # 以后也不再抓回来分析。目的是别让候补池里堆满永远赢不了的项目。
+    # 分析失败（降级）的不适用此规则 —— 那是 50 分的占位分，不代表项目差。
+    reject_below: float = 65.0
     readme_max_chars: int = 24_000  # ≈ 8000 token
 
     # --- LLM ---
