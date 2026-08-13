@@ -254,3 +254,37 @@ class TestStartupLlmCheck:
         with caplog.at_level(logging.INFO, logger="main"):
             main._startup_llm_check(s)
         assert "启动自检通过" in caplog.text
+
+
+class TestScheduling:
+    """调度启动路径 —— 容器常驻模式跑的就是这条，崩了会无限重启。"""
+
+    def test_next_fire_time_is_computable_before_scheduler_starts(self, tmp_path):
+        """回归：原来读 scheduler.get_jobs()[0].next_run_time，
+        而任务在 start() 之前是 pending、没有该属性，直接 AttributeError。"""
+        s = Settings(data_dir=tmp_path, execution_time="12:00", timezone="Asia/Dubai")
+        nxt = main.next_fire_time(s)
+        assert nxt is not None
+        assert nxt.hour == 12 and nxt.minute == 0
+        assert str(nxt.tzinfo) == "Asia/Dubai"
+
+    def test_next_fire_time_is_in_the_future(self, tmp_path):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        s = Settings(data_dir=tmp_path, execution_time="03:17", timezone="Asia/Shanghai")
+        nxt = main.next_fire_time(s)
+        assert nxt > datetime.now(ZoneInfo("Asia/Shanghai"))
+        assert (nxt.hour, nxt.minute) == (3, 17)
+
+    def test_scheduler_startup_does_not_raise(self, tmp_path, monkeypatch):
+        """把 BlockingScheduler.start 换成 no-op，跑完整个启动路径。
+        任何一行崩掉都会在这里暴露，而不是等到 NAS 上无限重启。"""
+        from apscheduler.schedulers.blocking import BlockingScheduler
+
+        s = Settings(
+            data_dir=tmp_path, mock_mode=True, serve_reports=False,
+            execution_time="12:00", timezone="Asia/Dubai",
+        )
+        monkeypatch.setattr(BlockingScheduler, "start", lambda self, *a, **k: None)
+        main.run_scheduler(s)  # 不抛异常即为通过

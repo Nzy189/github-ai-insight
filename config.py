@@ -33,8 +33,14 @@ SCORE_LABELS_CN: dict[str, str] = {
 class Settings(BaseSettings):
     """全部运行时配置。字段名与 .env 中的大写变量一一对应（大小写不敏感）。"""
 
+    # 按顺序读取，后者覆盖前者。
+    #   .env            —— 本地开发
+    #   ./data/.env     —— 本地把配置和数据放一起时
+    #   /app/data/.env  —— 容器内。GUI 型 NAS（极空间等）通常只能挂目录、
+    #                      挂不了单个文件，把 .env 放进数据目录就只需要一个
+    #                      目录挂载，用 NAS 的文件管理器改完重启容器即生效。
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(".env", "./data/.env", "/app/data/.env"),
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
@@ -192,6 +198,27 @@ def apply_tls_settings(settings: Settings) -> None:
             os.environ["REQUESTS_CA_BUNDLE"] = str(path)
             os.environ["SSL_CERT_FILE"] = str(path)
             LOGGER.info("已加载自定义 CA 证书: %s", path)
+
+
+ENV_FILE_CANDIDATES = (".env", "./data/.env", "/app/data/.env")
+
+
+def loaded_env_files() -> list[str]:
+    """实际生效的 .env 文件列表（后者覆盖前者）。启动时打日志用。
+
+    配置来源不明是排查配置问题时最费时间的一环，尤其是容器里可能同时
+    存在挂载进来的 .env 和数据目录里的 .env。
+    """
+    seen: list[str] = []
+    for candidate in ENV_FILE_CANDIDATES:
+        path = Path(candidate)
+        if not path.is_file():
+            continue
+        # 容器里工作目录就是 /app，"./data/.env" 与 "/app/data/.env" 是同一个文件
+        resolved = str(path.resolve())
+        if resolved not in seen:
+            seen.append(resolved)
+    return seen
 
 
 def setup_logging(level: str = "INFO") -> None:

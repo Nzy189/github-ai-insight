@@ -271,6 +271,21 @@ def run_once(settings: Settings, *, report_date: date | None = None,
 # ====================================================================== 调度
 
 
+def next_fire_time(settings: Settings) -> datetime | None:
+    """算出下一次执行时间。
+
+    刻意从 trigger 直接算，而不是读 `scheduler.get_jobs()[0].next_run_time` ——
+    在 `scheduler.start()` 之前任务处于 pending 状态，那个属性压根不存在，
+    读它会抛 AttributeError 并让整个常驻进程崩掉（容器会无限重启）。
+    """
+    from apscheduler.triggers.cron import CronTrigger
+
+    tz = ZoneInfo(settings.timezone)
+    hour, minute = settings.execution_time.split(":")
+    trigger = CronTrigger(hour=int(hour), minute=int(minute), timezone=tz)
+    return trigger.get_next_fire_time(None, datetime.now(tz))
+
+
 def run_scheduler(settings: Settings) -> None:
     from apscheduler.schedulers.blocking import BlockingScheduler
     from apscheduler.triggers.cron import CronTrigger
@@ -286,10 +301,12 @@ def run_scheduler(settings: Settings) -> None:
 
     _startup_llm_check(settings)
 
+    trigger = CronTrigger(hour=int(hour), minute=int(minute), timezone=tz)
+
     scheduler = BlockingScheduler(timezone=tz)
     scheduler.add_job(
         lambda: _safe_run(settings),
-        CronTrigger(hour=int(hour), minute=int(minute), timezone=tz),
+        trigger,
         id="daily_insight",
         name="GitHub AI 日报",
         misfire_grace_time=3600,
@@ -297,9 +314,8 @@ def run_scheduler(settings: Settings) -> None:
         max_instances=1,
     )
 
-    next_run = scheduler.get_jobs()[0].next_run_time if scheduler.get_jobs() else None
     LOGGER.info("调度已启动 | 每日 %s (%s)", settings.execution_time, settings.timezone)
-    LOGGER.info("下次执行: %s", next_run)
+    LOGGER.info("下次执行: %s", next_fire_time(settings))
 
     def _shutdown(signum, frame):  # noqa: ANN001, ARG001
         LOGGER.info("收到信号 %s，正在退出...", signum)
@@ -530,6 +546,12 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     setup_logging(settings.log_level)
+
+    from config import loaded_env_files
+
+    found = loaded_env_files()
+    LOGGER.info("配置来源: %s", " → ".join(found) if found else "（无 .env，全部使用默认值）")
+
     apply_tls_settings(settings)
 
     if args.show_config:
