@@ -73,13 +73,41 @@ if [ "$(id -u)" = "0" ]; then
   fi
 
   mkdir -p "$DATA_DIR/reports" "$DATA_DIR/archive"
-  # 属主已经对上就不动它 —— 递归 chown 一个大目录既慢又会无谓地
-  # 改掉宿主机上的文件属主（NAS 用户可能因此失去编辑权限）。
-  CURRENT_OWNER=$(stat -c '%u:%g' "$DATA_DIR" 2>/dev/null || echo "")
-  if [ "$CURRENT_OWNER" != "$PUID:$PGID" ]; then
-    echo "[entrypoint] 调整 $DATA_DIR 属主: $CURRENT_OWNER -> $PUID:$PGID"
-    chown -R "$PUID:$PGID" "$DATA_DIR" 2>/dev/null || true
-  fi
+
+  # 每个目录单独核对属主。只看 $DATA_DIR 是不够的：上面这行 mkdir 以 root
+  # 身份运行，新建的子目录属于 root:root，而父目录的属主通常已经对得上 ——
+  # 于是递归 chown 被跳过，子目录永远修不了。
+  # 症状极具迷惑性：容器启动正常、数据库正常（它在 $DATA_DIR 根下，可写），
+  # 一切看起来健康，直到十小时后定时任务写报告时才以 PermissionError 崩掉。
+  #
+  # 属主已经对上的仍然不动 —— 递归 chown 一个大目录既慢，又会无谓改掉宿主机
+  # 上的文件属主（NAS 用户可能因此失去从文件管理器编辑 .env 的权限）。
+  for d in "$DATA_DIR" "$DATA_DIR/reports" "$DATA_DIR/archive"; do
+    owner=$(stat -c '%u:%g' "$d" 2>/dev/null || echo "")
+    [ "$owner" = "$PUID:$PGID" ] && continue
+    echo "[entrypoint] 调整属主 $d: $owner -> $PUID:$PGID"
+    if [ "$d" = "$DATA_DIR" ]; then
+      chown -R "$PUID:$PGID" "$d" 2>/dev/null || true   # 首次挂载：连历史文件一起修
+    else
+      chown "$PUID:$PGID" "$d" 2>/dev/null || true      # 子目录：单层即可
+    fi
+  done
+
+  # 属主对了不等于写得进去 —— 只读挂载、ACL、SMB 挂载都能拦住。
+  # 这个检查必须发生在启动时：否则要等第一次生成报告才暴露，而那已经是
+  # 十小时之后，用户看到的只是「今天没收到报告」。
+  # 刻意不 exit：容器退出会变成重启循环，比一条响亮的告警更糟，
+  # 而且 HTTP 服务还能继续提供历史报告。
+  for d in "$DATA_DIR" "$DATA_DIR/reports" "$DATA_DIR/archive"; do
+    if ! gosu "$PUID:$PGID" sh -c "touch '$d/.wprobe' && rm -f '$d/.wprobe'" 2>/dev/null; then
+      echo "[entrypoint] ==========================================================" >&2
+      echo "[entrypoint] 错误：$d 对 UID=$PUID 不可写。" >&2
+      echo "[entrypoint] 定时任务会在写报告时失败，你将收不到任何推送。" >&2
+      echo "[entrypoint] 修复：容器终端执行 chown -R $PUID:$PGID $DATA_DIR" >&2
+      echo "[entrypoint] 或在 NAS 文件管理器里把数据目录连同子目录的属主改过来。" >&2
+      echo "[entrypoint] ==========================================================" >&2
+    fi
+  done
 
   echo "[entrypoint] 以 UID=$PUID GID=$PGID 运行: $*"
   cd "$(resolve_app_dir)"
